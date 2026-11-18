@@ -160,14 +160,14 @@ function readForm() {
 function renderLearned() {
   el.learnedList.textContent = '';
   const stats = profileStats(state.profile);
-  el.styleBadge.textContent = `${stats.samples} примеров`;
+  el.styleBadge.textContent = `${stats.samples} ${{ one: 'пример', few: 'примера', many: 'примеров', other: 'примера' }[new Intl.PluralRules('ru').select(stats.samples)]}`;
   el.styleBadge.className = stats.samples ? 'badge badge--ok' : 'badge';
   const rules = state.profile.rules || [];
   if (!rules.length) {
     const empty = document.createElement('li');
     empty.className = 'learned__empty';
     empty.textContent =
-      'Пока правил нет. Сгенерируйте ответ, вставьте его, поправьте текст в композере и нажмите «Учиться на правке» в панели.';
+      'Пока правил нет. Вставьте ответ в письмо, отредактируйте черновик и нажмите «Учиться на правке» в панели.';
     el.learnedList.appendChild(empty);
     return;
   }
@@ -195,7 +195,7 @@ function renderVoiceAvailability() {
 function renderTestResult(kind, title, hint = '') {
   el.testResult.hidden = false;
   el.testResult.className = `test-result is-${kind}`;
-  el.testIcon.setAttribute('href', kind === 'error' ? '#i-alert' : '#i-check');
+  el.testIcon.setAttribute('href', kind === 'pending' ? '#i-plug' : kind === 'error' ? '#i-alert' : '#i-check');
   el.testTitle.textContent = title;
   el.testHint.textContent = hint;
 }
@@ -228,7 +228,7 @@ function requestProviderPermission(settings) {
 function onSave() {
   const { settings, profile } = readForm();
   // Вызов chrome.permissions.request должен идти сразу из жеста.
-  const permissionPromise = requestProviderPermission(settings);
+  const permissionPromise = isDemoMode(settings) ? Promise.resolve(true) : requestProviderPermission(settings);
   (async () => {
     const granted = await permissionPromise;
     await persist(settings, profile);
@@ -243,6 +243,7 @@ function onTest() {
     el.apiKey.focus();
     return;
   }
+  el.btnTest.disabled = true;
   renderTestResult('pending', 'Проверяем соединение…', '');
   const permissionPromise = requestProviderPermission(settings);
   (async () => {
@@ -258,14 +259,17 @@ function onTest() {
   })().catch((error) => {
     const info = describeLLMError(error);
     renderTestResult('error', info.title, info.hint || '');
-  });
+  }).finally(() => { el.btnTest.disabled = false; });
 }
 
 function onReset() {
   const confirmed = window.confirm('Удалить ключ, настройки, историю чатов и данные обучения стилю?');
   if (!confirmed) return;
   (async () => {
-    await chrome.storage.local.remove([STORAGE_KEYS.settings, STORAGE_KEYS.profile, STORAGE_KEYS.chat]);
+    await navigator.locks.request(STORAGE_KEYS.chat, async () => {
+      await chrome.storage.local.set({ [STORAGE_KEYS.chatReset]: crypto.randomUUID() });
+      await chrome.storage.local.remove([STORAGE_KEYS.settings, STORAGE_KEYS.profile, STORAGE_KEYS.chat]);
+    });
     try {
       const all = await chrome.permissions.getAll();
       const origins = (all.origins || []).filter((origin) => origin.startsWith('http'));
@@ -303,7 +307,7 @@ function onExport() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = `aibro-profile-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.download = `ii-pomoshchnik-profile-${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
@@ -364,13 +368,17 @@ function bind() {
 }
 
 async function init() {
-  el.version.textContent = chrome.runtime.getManifest().version;
+  el.version.textContent = `Версия ${chrome.runtime.getManifest().version}`;
   const stored = await chrome.storage.local.get([STORAGE_KEYS.settings, STORAGE_KEYS.profile]);
   state.settings = normalizeSettings(stored[STORAGE_KEYS.settings]);
   state.profile = normalizeProfile(stored[STORAGE_KEYS.profile]);
   // Миграция старых настроек (провайдер/модель) к фиксированному DeepSeek flash.
   const rawSettings = stored[STORAGE_KEYS.settings];
-  if (!rawSettings || rawSettings.schema !== 3 || rawSettings.provider !== 'deepseek' || rawSettings.model !== 'deepseek-flash') {
+  if (
+    !rawSettings || rawSettings.schema !== 3 || rawSettings.provider !== 'deepseek' ||
+    rawSettings.model !== 'deepseek-flash' || rawSettings.baseUrl !== state.settings.baseUrl ||
+    rawSettings.apiKey !== state.settings.apiKey
+  ) {
     await chrome.storage.local.set({ [STORAGE_KEYS.settings]: state.settings });
   }
   applyTheme();
@@ -379,6 +387,6 @@ async function init() {
 }
 
 init().catch((error) => {
-  console.error('[AI Bro options] init failed', error);
+  console.error('[ИИ помощник options] init failed', error);
   toast(`Ошибка инициализации настроек: ${error && error.message ? error.message : error}`, true);
 });

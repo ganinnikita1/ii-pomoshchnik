@@ -7,6 +7,7 @@ export const STORAGE_KEYS = Object.freeze({
   settings: 'settings',
   profile: 'styleProfile',
   chat: 'chatSessions',
+  chatReset: 'chatReset',
   pending: 'pendingContext',
 });
 
@@ -236,12 +237,19 @@ export function normalizeSettings(raw) {
   const legacyContext = input.schema !== 3;
   // Миграция: старые настройки с openai/anthropic/ollama или другой моделью
   // принудительно приводим к фиксированному профилю DeepSeek flash.
+  let apiKey = '';
+  try {
+    // Ключ переносим только с подтверждённого HTTPS API DeepSeek.
+    if (new URL(input.baseUrl).origin === DEFAULT_SETTINGS.baseUrl) apiKey = String(input.apiKey || '').trim();
+  } catch {
+    // Отсутствующий или некорректный адрес не подтверждает принадлежность ключа.
+  }
   return {
     schema: 3,
     provider: 'deepseek',
     baseUrl: 'https://api.deepseek.com',
     model: 'deepseek-flash',
-    apiKey: String(input.apiKey || '').trim(),
+    apiKey,
     temperature: clamp(input.temperature ?? DEFAULT_SETTINGS.temperature, 0, 1),
     maxTokens: Math.round(clamp(input.maxTokens ?? DEFAULT_SETTINGS.maxTokens, 128, 4000)),
     streaming: input.streaming !== false,

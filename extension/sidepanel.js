@@ -1,5 +1,5 @@
 /**
- * sidepanel.js — логика боковой панели «AI Bro».
+ * sidepanel.js — логика боковой панели «ИИ помощник».
  *
  * Здесь: состояние чата, вызовы модели (или демо-режим), рендер сообщений,
  * варианты ответа на письмо, вставка в композер, обучение стилю и голосовой ввод
@@ -77,6 +77,7 @@ const state = {
   settings: normalizeSettings(null),
   profile: normalizeProfile(null),
   sessions: [],
+  chatReset: null,
   activeId: null,
   tab: null,
   busy: false,
@@ -98,6 +99,8 @@ const state = {
 
 const liveViews = new Map();
 let saveTimer = null;
+let panelWindowId = null;
+let lastSelection = null;
 const MANUAL_LIMIT = 12000;
 
 /* ------------------------------------------------------------------ */
@@ -170,12 +173,29 @@ function normalizeSessions(raw) {
 }
 
 async function loadState() {
-  const stored = await chrome.storage.local.get([STORAGE_KEYS.settings, STORAGE_KEYS.profile, STORAGE_KEYS.chat]);
-  state.settings = normalizeSettings(stored[STORAGE_KEYS.settings]);
-  state.theme = state.settings.theme;
-  state.profile = normalizeProfile(stored[STORAGE_KEYS.profile]);
-  state.sessions = normalizeSessions(stored[STORAGE_KEYS.chat]);
-  state.activeId = state.sessions.length ? state.sessions[0].id : null;
+  await navigator.locks.request(STORAGE_KEYS.chat, async () => {
+    const stored = await chrome.storage.local.get([STORAGE_KEYS.settings, STORAGE_KEYS.profile, STORAGE_KEYS.chat, STORAGE_KEYS.chatReset]);
+    state.settings = normalizeSettings(stored[STORAGE_KEYS.settings]);
+    state.theme = state.settings.theme;
+    state.profile = normalizeProfile(stored[STORAGE_KEYS.profile]);
+    state.chatReset = stored[STORAGE_KEYS.chatReset] || null;
+    state.sessions = normalizeSessions(stored[STORAGE_KEYS.chat]);
+    state.activeId = state.sessions.length ? state.sessions[0].id : null;
+  });
+}
+
+function resetChats(resetId) {
+  if (state.chatReset === resetId) return;
+  state.chatReset = resetId;
+  clearTimeout(saveTimer);
+  if (state.controller) state.controller.abort();
+  state.controller = null;
+  state.sessions = [];
+  state.activeId = null;
+  state.lastAction = null;
+  setBusy(false);
+  renderChat();
+  renderSessions();
 }
 
 function scheduleSave() {
@@ -185,13 +205,22 @@ function scheduleSave() {
 
 async function saveSessions() {
   try {
-    const persisted = state.sessions
-      .filter((s) => s.messages.length)
-      .slice(0, LIMITS.maxSessions)
-      .map((s) => ({ ...s, messages: s.messages.slice(-80) }));
-    await chrome.storage.local.set({ [STORAGE_KEYS.chat]: persisted });
+    // Сброс и запись сериализованы между окнами; старое поколение чатов не возвращается.
+    await navigator.locks.request(STORAGE_KEYS.chat, async () => {
+      const stored = await chrome.storage.local.get(STORAGE_KEYS.chatReset);
+      const resetId = stored[STORAGE_KEYS.chatReset] || null;
+      if (state.chatReset !== resetId) {
+        resetChats(resetId);
+        return;
+      }
+      const persisted = state.sessions
+        .filter((s) => s.messages.length)
+        .slice(0, LIMITS.maxSessions)
+        .map((s) => ({ ...s, messages: s.messages.slice(-80) }));
+      await chrome.storage.local.set({ [STORAGE_KEYS.chat]: persisted });
+    });
   } catch (error) {
-    console.warn('[AI Bro] saveSessions:', error);
+    console.warn('[ИИ помощник] saveSessions:', error);
   }
 }
 
@@ -199,7 +228,7 @@ async function saveSettings() {
   try {
     await chrome.storage.local.set({ [STORAGE_KEYS.settings]: state.settings });
   } catch (error) {
-    console.warn('[AI Bro] saveSettings:', error);
+    console.warn('[ИИ помощник] saveSettings:', error);
   }
 }
 
@@ -207,7 +236,7 @@ async function saveProfile() {
   try {
     await chrome.storage.local.set({ [STORAGE_KEYS.profile]: state.profile });
   } catch (error) {
-    console.warn('[AI Bro] saveProfile:', error);
+    console.warn('[ИИ помощник] saveProfile:', error);
   }
 }
 
@@ -228,6 +257,7 @@ function applyTheme() {
   const use = el.btnTheme.querySelector('use');
   if (use) use.setAttribute('href', resolved === 'dark' ? '#i-moon' : '#i-sun');
   el.btnTheme.title = `Тема: ${state.theme === 'auto' ? 'как в системе' : state.theme === 'dark' ? 'тёмная' : 'светлая'}`;
+  el.btnTheme.setAttribute('aria-label', `${el.btnTheme.title}. Переключить тему`);
 }
 
 darkQuery.addEventListener('change', () => {
@@ -243,11 +273,11 @@ async function refreshProviderState() {
   state.demo = isDemoMode(settings);
   el.providerState.classList.remove('is-demo', 'is-live');
   if (state.demo) {
-    el.providerState.textContent = 'Демо-режим · без ключа';
+    el.providerState.textContent = 'Демонстрационный режим';
     el.providerState.classList.add('is-demo');
     el.banner.hidden = false;
-    el.bannerText.textContent = 'API-ключ не задан — ответы демонстрационные.';
-    el.bannerAction.textContent = 'Настроить';
+    el.bannerText.textContent = 'Ответы — примеры. Для своих черновиков подключите DeepSeek.';
+    el.bannerAction.textContent = 'Подключить';
     el.bannerAction.dataset.action = 'settings';
     return;
   }
@@ -299,11 +329,12 @@ async function getActiveTab() {
         return res.tab;
       }
     } catch {
-      /* упадём в обычный путь */
+      /* Вкладка могла закрыться. */
     }
+    return null;
   }
   try {
-    const res = await chrome.runtime.sendMessage({ type: 'GET_ACTIVE_TAB' });
+    const res = await chrome.runtime.sendMessage({ type: 'GET_ACTIVE_TAB', windowId: panelWindowId });
     if (res && res.ok) {
       state.tab = res.tab;
       return res.tab;
@@ -384,9 +415,10 @@ function manualMail() {
 
 function updateManualUi() {
   const raw = manualRaw();
-  const length = raw.trim().length;
+  const length = raw.length;
   el.manualCounter.textContent = `${length.toLocaleString('ru-RU')} / ${MANUAL_LIMIT.toLocaleString('ru-RU')} знаков`;
-  el.manualCounter.classList.toggle('is-over', length > MANUAL_LIMIT);
+  el.manualCounter.classList.toggle('is-over', length >= MANUAL_LIMIT);
+  el.manualClear.disabled = length === 0;
   if (el.manualText.value !== raw) el.manualText.value = raw;
 }
 
@@ -408,6 +440,16 @@ function clearManualText(message = 'Текст очищен') {
 
 function openManualField() {
   el.manualText.focus();
+}
+
+function applySelectionContext(context) {
+  if (context?.kind !== 'selection' || context.windowId !== panelWindowId || typeof context.text !== 'string' || !context.text.trim()) return;
+  if (lastSelection && (lastSelection.id === context.id || lastSelection.ts > context.ts)) return;
+  lastSelection = { id: context.id, ts: context.ts };
+  setManualText(context.text, { notify: true });
+  openManualField();
+  toast(context.truncated ? 'Выделение обрезано до 12 000 знаков.' : 'Выделенный текст добавлен. Выберите действие ниже.', context.truncated === true);
+  chrome.runtime.sendMessage({ type: 'CLEAR_PENDING_CONTEXT', id: context.id, windowId: panelWindowId }).catch(() => {});
 }
 
 function openMessageOf(mail) {
@@ -477,24 +519,20 @@ function renderEmptyState() {
 
   const icon = document.createElement('div');
   icon.className = 'empty__icon';
-  icon.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-sparkles"></use></svg>';
+  icon.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-mail"></use></svg>';
   wrap.appendChild(icon);
 
   const title = document.createElement('h2');
   title.className = 'empty__title';
-  title.textContent = 'Здесь появится ответ';
+  title.textContent = 'Место для черновика';
   wrap.appendChild(title);
 
   const text = document.createElement('p');
   text.className = 'empty__text';
   text.textContent =
-    'Вставьте текст письма или сообщения в поле выше и выберите действие. AI Bro работает только с этим текстом и не читает страницы.';
+    'Вставьте письмо и нажмите «Ответить». Готовый вариант можно отредактировать в почте перед отправкой.';
   wrap.appendChild(text);
 
-  const examples = document.createElement('p');
-  examples.className = 'empty__examples';
-  examples.textContent = 'Например: «Ответь коротко и по делу» или «Что от меня хотят?»';
-  wrap.appendChild(examples);
 
   el.chat.appendChild(wrap);
 }
@@ -677,7 +715,7 @@ class MessageView {
     const dot = document.createElement('span');
     dot.className = 'status-dot';
     const name = document.createElement('span');
-    name.textContent = message.role === 'user' ? 'Вы' : 'AI Bro';
+    name.textContent = message.role === 'user' ? 'Вы' : 'ИИ помощник';
     head.append(dot, name);
     if (message.role === 'assistant' && message.meta && message.meta.demo) {
       const badge = document.createElement('span');
@@ -997,8 +1035,7 @@ class MessageView {
       retry.className = 'ghost-btn';
       retry.textContent = 'Повторить';
       retry.addEventListener('click', () => {
-        removeMessage(message);
-        runAction(action);
+        runAction(action, message);
       });
       actionRow.appendChild(retry);
     }
@@ -1013,8 +1050,8 @@ class MessageView {
           if (granted) {
             toast('Разрешение получено');
             await refreshProviderState();
-            removeMessage(message);
-            if (action) runAction(action);
+            if (action) runAction(action, message);
+            else removeMessage(message);
           }
         } catch (error) {
           toast(error && error.message ? error.message : 'Не удалось запросить разрешение', true);
@@ -1057,20 +1094,21 @@ async function copyToClipboard(text) {
     await navigator.clipboard.writeText(text);
     return true;
   } catch {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', 'readonly');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
     try {
-      const area = document.createElement('textarea');
-      area.value = text;
-      area.setAttribute('readonly', 'readonly');
-      area.style.position = 'fixed';
-      area.style.opacity = '0';
-      document.body.appendChild(area);
       area.select();
-      const ok = document.execCommand('copy');
-      area.remove();
-      return ok;
+      if (document.execCommand('copy')) return true;
     } catch {
-      return false;
+      /* Браузер может запретить оба способа копирования. */
+    } finally {
+      area.remove();
     }
+    throw new Error('Не удалось скопировать. Выделите текст ответа и скопируйте его вручную.');
   }
 }
 
@@ -1119,6 +1157,8 @@ async function rememberEdit(draft) {
 function setBusy(busy) {
   state.busy = busy;
   el.stop.hidden = !busy;
+  el.btnNew.disabled = busy;
+  el.btnHistory.disabled = busy;
   document.body.classList.toggle('is-busy', busy);
   el.chat.setAttribute('aria-busy', busy ? 'true' : 'false');
   updateQuickActions();
@@ -1170,6 +1210,7 @@ async function executeTask(task, options = {}) {
 
   try {
     const handle = (event) => {
+      if (state.controller !== controller) return;
       if (event.type === 'notice') {
         toast(event.text);
         return;
@@ -1210,33 +1251,37 @@ async function executeTask(task, options = {}) {
       message.meta.error = info;
     }
   } finally {
-    delete message.meta.streaming;
-    state.controller = null;
-    view.finishStreaming(message);
-    if (state.demo && !message.meta.error) {
-      message.meta.demoNotice = 'Демо-ответ без обращения к модели. Ключ настраивается в разделе «Настройки».';
-      view.showDemoNotice();
+    if (state.controller === controller) {
+      delete message.meta.streaming;
+      state.controller = null;
+      view.finishStreaming(message);
+      if (state.demo && !message.meta.error) {
+        message.meta.demoNotice = 'Демо-ответ без обращения к модели. Ключ настраивается в разделе «Настройки».';
+        view.showDemoNotice();
+      }
+      setBusy(false);
+      scheduleSave();
+      scrollToBottom();
     }
-    setBusy(false);
-    scheduleSave();
-    scrollToBottom();
   }
   return message;
 }
 
-async function sendChat(question) {
+async function sendChat(question, retryUserId = null) {
   const text = String(question || '').trim();
-  if (!text) return;
+  if (!text || state.busy) return;
 
+  const previous = findSession(state.activeId)?.messages.find((m) => m.id === retryUserId);
+  if (previous) removeMessage(previous);
+  const userMessage = { id: uid('msg'), role: 'user', content: text, ts: Date.now(), meta: {} };
   const action = { name: 'chat', question: text };
   state.lastAction = action;
-  const history = historyForPrompt().slice(0, -1);
+  const history = historyForPrompt();
 
   // Контекст — только вставленный текст. Страницы и почту не читаем.
   const manual = manualMail();
   const context = manual ? { kind: 'mail', mail: manual } : null;
 
-  const userMessage = { id: uid('msg'), role: 'user', content: text, ts: Date.now(), meta: {} };
   addMessage(userMessage);
   const view = new MessageView(userMessage);
   liveViews.set(userMessage.id, view);
@@ -1329,9 +1374,13 @@ async function generateSummary(brief = false) {
   await executeTask(task, { kind: briefMode ? 'brief' : 'summary', action });
 }
 
-function runAction(action) {
-  if (!action) return;
-  if (action.name === 'chat') return sendChat(action.question);
+function runAction(action, failedMessage) {
+  if (!action || state.busy) return;
+  const session = findSession(state.activeId);
+  const index = session ? session.messages.findIndex((m) => m.id === failedMessage?.id) : -1;
+  const previous = session?.messages[index - 1];
+  if (failedMessage) removeMessage(failedMessage);
+  if (action.name === 'chat') return sendChat(action.question, previous?.role === 'user' ? previous.id : null);
   if (action.name === 'reply') return generateReply(action.intent || '');
   if (action.name === 'summary') return generateSummary(Boolean(action.brief));
   return undefined;
@@ -1385,7 +1434,7 @@ function renderSessions() {
     remove.type = 'button';
     remove.className = 'icon-btn icon-btn--sm session-delete';
     remove.title = 'Удалить чат';
-    remove.setAttribute('aria-label', 'Удалить чат');
+    remove.setAttribute('aria-label', `Удалить чат «${title.textContent}»`);
     remove.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-trash"></use></svg>';
     remove.addEventListener('click', async (event) => {
       event.stopPropagation();
@@ -1394,6 +1443,7 @@ function renderSessions() {
       await saveSessions();
       renderChat();
       renderSessions();
+      el.drawerClose.focus();
       toast('Чат удалён');
     });
     item.append(open, remove);
@@ -1405,13 +1455,18 @@ function openDrawer() {
   renderSessions();
   el.drawer.hidden = false;
   el.drawerBackdrop.hidden = false;
+  document.querySelector('.app').inert = true;
   el.btnHistory.setAttribute('aria-expanded', 'true');
+  el.drawerClose.focus();
 }
 
 function closeDrawer() {
+  if (el.drawer.hidden) return;
+  document.querySelector('.app').inert = false;
   el.drawer.hidden = true;
   el.drawerBackdrop.hidden = true;
   el.btnHistory.setAttribute('aria-expanded', 'false');
+  el.btnHistory.focus();
 }
 
 function newChat() {
@@ -1675,7 +1730,7 @@ function bindEvents() {
       }
       setManualText(text, { notify: true });
       el.manualText.focus();
-      toast('Вставлено из буфера');
+      if (text.length <= MANUAL_LIMIT) toast('Вставлено из буфера');
     } catch {
       el.manualText.focus();
       toast('Буфер недоступен — вставьте вручную (Ctrl+V).', true);
@@ -1688,6 +1743,14 @@ function bindEvents() {
   el.btnNew.addEventListener('click', newChat);
   el.btnHistory.addEventListener('click', () => (el.drawer.hidden ? openDrawer() : closeDrawer()));
   el.drawerClose.addEventListener('click', closeDrawer);
+  el.drawer.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab') return;
+    const buttons = [...el.drawer.querySelectorAll('button:not(:disabled)')];
+    const first = buttons[0], last = buttons[buttons.length - 1];
+    if (event.shiftKey ? document.activeElement !== first : document.activeElement !== last) return;
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+  });
   el.drawerBackdrop.addEventListener('click', closeDrawer);
   el.btnTheme.addEventListener('click', async () => {
     const order = ['auto', 'light', 'dark'];
@@ -1705,8 +1768,19 @@ function bindEvents() {
       if (!el.drawer.hidden) closeDrawer();
     }
   });
+}
+
+async function init() {
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message?.type === 'CONTEXT_PUSH') applySelectionContext(message.context);
+  });
+  const sourceTab = popupTabId ? await chrome.tabs.get(popupTabId).catch(() => null) : null;
+  panelWindowId = sourceTab ? sourceTab.windowId : (await chrome.windows.getCurrent()).id;
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
+    if (changes[STORAGE_KEYS.chatReset]) {
+      resetChats(changes[STORAGE_KEYS.chatReset].newValue || null);
+    }
     if (changes[STORAGE_KEYS.settings]) {
       state.settings = normalizeSettings(changes[STORAGE_KEYS.settings].newValue);
       state.theme = state.settings.theme;
@@ -1718,13 +1792,10 @@ function bindEvents() {
       state.profile = normalizeProfile(changes[STORAGE_KEYS.profile].newValue);
     }
   });
-}
-
-async function init() {
   try {
     await loadState();
   } catch (error) {
-    console.warn('[AI Bro] loadState:', error);
+    console.warn('[ИИ помощник] loadState:', error);
   }
   applyTheme();
   refreshVoiceUi();
@@ -1736,10 +1807,16 @@ async function init() {
   renderChat();
   updateQuickActions();
   el.manualText.focus();
+  try {
+    const pending = await chrome.runtime.sendMessage({ type: 'GET_PENDING_CONTEXT', windowId: panelWindowId, clear: false });
+    applySelectionContext(pending?.context);
+  } catch (error) {
+    console.warn('[ИИ помощник] pending selection:', error);
+  }
 }
 
 init().catch((error) => {
-  console.error('[AI Bro] init failed', error);
+  console.error('[ИИ помощник] init failed', error);
   renderChat();
   const box = document.createElement('div');
   box.className = 'error-box';

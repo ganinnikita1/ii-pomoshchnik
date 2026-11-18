@@ -149,7 +149,7 @@ async function* lineIterator(response) {
     if (buffer.trim()) yield buffer.trim();
   } finally {
     try {
-      reader.cancel();
+      await reader.cancel();
     } catch {
       /* уже закрыт */
     }
@@ -333,6 +333,7 @@ export async function* streamTask({ settings, task, signal }) {
         body: JSON.stringify(request.body),
         signal: controller.signal,
         credentials: 'omit',
+        redirect: 'error',
         cache: 'no-store',
       });
 
@@ -361,7 +362,8 @@ export async function* streamTask({ settings, task, signal }) {
       for await (const line of lineIterator(response)) {
         if (!line || line.startsWith(':') || line.startsWith('event:')) continue;
         const payloadText = (line.startsWith('data:') ? line.slice(5) : line).trim();
-        if (!payloadText || payloadText === '[DONE]') continue;
+        if (payloadText === '[DONE]') { doneSeen = true; break; }
+        if (!payloadText) continue;
         let payload;
         try {
           payload = JSON.parse(payloadText);
@@ -393,7 +395,8 @@ export async function* streamTask({ settings, task, signal }) {
       if (!full.trim()) {
         throw new LLMError('BAD_RESPONSE', 'Модель вернула пустой ответ. Повторите запрос.', { retryable: false });
       }
-      yield { type: 'done', text: full, stopReason: doneSeen ? 'stop' : 'eof' };
+      if (!doneSeen) throw new LLMError('BAD_RESPONSE', 'Соединение прервалось до конца ответа. Повторите запрос.');
+      yield { type: 'done', text: full, stopReason: 'stop' };
       return;
     } catch (error) {
       if (error instanceof LLMError && error.code === 'BAD_RESPONSE' && !error.retryable) throw error;
@@ -408,7 +411,7 @@ export async function* streamTask({ settings, task, signal }) {
       // DeepSeek может отклонить thinking/reasoning_effort — один повтор без них и без temperature.
       // Только если текст ошибки действительно про эти поля, а не «invalid model»/битый запрос.
       const providerErrorText = `${mapped.message || ''} ${mapped.hint || ''}`;
-      const thinkingRejected = /unknown field|unrecognized|unexpected|unsupported|thinking|reasoning_effort/i.test(providerErrorText);
+      const thinkingRejected = /thinking|reasoning_effort/i.test(providerErrorText);
       if (
         mapped.code === 'BAD_REQUEST' &&
         request.provider === 'deepseek' &&
@@ -456,7 +459,7 @@ async function timedFetch(url, options, timeoutMs = 15000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...options, signal: controller.signal, credentials: 'omit', cache: 'no-store' });
+    return await fetch(url, { ...options, signal: controller.signal, redirect: 'error', credentials: 'omit', cache: 'no-store' });
   } finally {
     clearTimeout(timer);
   }

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AI Bro</title>
+    <title>ИИ помощник</title>
     <link rel="stylesheet" href="styles/base.css" />
     <link rel="stylesheet" href="sidepanel.css" />
   </head>
@@ -22,7 +22,7 @@
       <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18" /><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></symbol>
       <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></symbol>
       <symbol id="i-page" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6" /><path d="M8 13h8M8 17h6" /></symbol>
-      <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="m12 3 1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8Z" /><path d="M19 15l.9 2.1 2.1.9-2.1.9L19 21l-.9-2.1-2.1-.9 2.1-.9Z" /></symbol>
+      <symbol id="i-brief" viewBox="0 0 24 24"><path d="M4 6h16M4 12h12M4 18h8" /></symbol>
       <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6" /></symbol>
       <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 21h20Z" /><path d="M12 9v5M12 18h.01" /></symbol>
       <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9" /><path d="M3 4v5h5" /></symbol>
@@ -33,9 +33,9 @@
     <div class="app">
       <header class="topbar">
         <div class="topbar__brand">
-          <span class="brand-mark" aria-hidden="true">AB</span>
+          <img class="brand-mark" src="icons/mark.svg" alt="" width="32" height="32" />
           <div class="topbar__titles">
-            <h1 class="topbar__title">AI Bro</h1>
+            <h1 class="topbar__title">ИИ помощник</h1>
             <p class="topbar__subtitle" id="provider-state">Проверяем настройки…</p>
           </div>
         </div>
@@ -62,13 +62,13 @@
       </div>
 
       <section class="manual" id="manual-section" aria-label="Текст для разбора">
-        <label class="manual__label" for="manual-text">Вставьте текст письма или сообщения</label>
+        <label class="manual__label" for="manual-text">Исходное письмо</label>
         <textarea
           class="manual__textarea"
           id="manual-text"
-          rows="10"
+          rows="5"
           maxlength="12000"
-          placeholder="Вставьте письмо или сообщение — AI Bro разберёт текст и предложит ответ"
+          placeholder="Вставьте сюда письмо, на которое хотите ответить…"
         ></textarea>
         <div class="manual__actions">
           <button class="ghost-btn manual__small" id="btn-manual-paste" type="button">Вставить из буфера</button>
@@ -80,19 +80,19 @@
       <section class="quickbar" aria-label="Действия с вставленным текстом">
         <button class="chip" id="btn-reply" type="button" title="Предложить ответ на вставленный текст">
           <svg class="icon" aria-hidden="true"><use href="#i-mail"></use></svg>
-          <span class="chip__label">Ответить на письмо</span>
+          <span class="chip__label">Ответить</span>
         </button>
         <button class="chip" id="btn-brief" type="button" title="Кратко пересказать вставленный текст">
-          <svg class="icon" aria-hidden="true"><use href="#i-sparkles"></use></svg>
-          <span class="chip__label">Краткая сводка</span>
+          <svg class="icon" aria-hidden="true"><use href="#i-brief"></use></svg>
+          <span class="chip__label">Суть</span>
         </button>
         <button class="chip" id="btn-summary" type="button" title="Разобрать вставленный текст по пунктам">
           <svg class="icon" aria-hidden="true"><use href="#i-page"></use></svg>
-          <span class="chip__label">Разобрать письмо</span>
+          <span class="chip__label">Разбор</span>
         </button>
       </section>
 
-      <main class="chat" id="chat" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Диалог с AI"></main>
+      <main class="chat" id="chat" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Диалог с помощником"></main>
 
       <form class="composer" id="composer-form" autocomplete="off">
         <div class="composer__field">
@@ -101,7 +101,7 @@
             id="input"
             class="composer__input"
             rows="1"
-            placeholder="Спросите про вставленный текст…"
+            placeholder="Уточните, каким должен быть ответ…"
             aria-describedby="voice-status composer-note"
           ></textarea>
         </div>
@@ -120,20 +120,19 @@
           </button>
         </div>
         <p class="composer__note" id="composer-note">
-          <span>Enter — спросить, Shift+Enter — новая строка.</span>
-          <span>AI Bro работает только с текстом из поля и не отправляет письма сам.</span>
+          <span>Enter — спросить · Shift + Enter — новая строка</span>
         </p>
       </form>
     </div>
 
-    <aside class="drawer" id="drawer" aria-label="История чатов" hidden>
+    <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="История чатов" hidden>
       <div class="drawer__head">
         <h2 class="drawer__title">История</h2>
         <button class="icon-btn" id="btn-drawer-close" type="button" aria-label="Закрыть историю">
           <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
         </button>
       </div>
-      <p class="drawer__hint">AI Bro хранит чаты только в этом браузере (chrome.storage.local).</p>
+      <p class="drawer__hint">Чаты сохраняются в этом браузере.</p>
       <ul class="session-list" id="session-list"></ul>
     </aside>
 

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AI Bro — настройки</title>
+    <title>ИИ помощник — настройки</title>
     <link rel="stylesheet" href="styles/base.css" />
     <link rel="stylesheet" href="options.css" />
   </head>
@@ -24,11 +24,12 @@
 
     <header class="page-head">
       <div class="page-head__brand">
-        <span class="brand-mark brand-mark--lg" aria-hidden="true">AB</span>
-        <h1 class="page-head__title">AI Bro — настройки</h1>
+        <img class="brand-mark brand-mark--lg" src="icons/mark.svg" alt="" width="40" height="40" />
+        <div><p class="page-head__subtitle">ИИ помощник</p><h1 class="page-head__title">Настройки</h1></div>
       </div>
       <div class="page-head__actions">
-        <span class="version" id="app-version">0.2.19</span>
+        <span class="version" id="app-version"></span>
+        <button class="primary-btn" id="btn-save" type="button">Сохранить настройки</button>
       </div>
     </header>
 
@@ -38,10 +39,11 @@
           <div class="card__head">
             <h2 class="card__title" id="h-key">
               <svg class="icon" aria-hidden="true"><use href="#i-key"></use></svg>
-              API-ключ
+              Подключение DeepSeek
             </h2>
           </div>
 
+          <p class="card__desc">Без ключа можно попробовать пример ответа. Для работы со своими письмами подключите DeepSeek.</p>
           <div class="field">
             <label class="field__label" for="apiKey">Ключ DeepSeek</label>
             <div class="input-with-action">
@@ -52,7 +54,7 @@
             </div>
           </div>
 
-          <div class="test-result" id="test-result" hidden>
+          <div class="test-result" id="test-result" role="status" aria-live="polite" hidden>
             <svg class="icon" aria-hidden="true"><use id="test-icon" href="#i-check"></use></svg>
             <div class="test-result__body">
               <p class="test-result__title" id="test-title"></p>
@@ -61,15 +63,14 @@
           </div>
 
           <div class="card__actions">
-            <button class="primary-btn" id="btn-test" type="button">
+            <button class="ghost-btn" id="btn-test" type="button">
               <svg class="icon" aria-hidden="true"><use href="#i-plug"></use></svg>
               Проверить соединение
             </button>
-            <button class="ghost-btn" id="btn-save" type="button">Сохранить</button>
             <span class="card__spacer"></span>
             <button class="danger-btn" id="btn-reset" type="button">
               <svg class="icon" aria-hidden="true"><use href="#i-trash"></use></svg>
-              Сбросить
+              Сбросить всё
             </button>
           </div>
         </section>
@@ -82,7 +83,7 @@
           <div class="details">
             <label class="checkbox-row">
               <input type="checkbox" id="streaming" checked />
-              <span><strong>Стриминг ответа</strong></span>
+              <span><strong>Показывать ответ по мере написания</strong></span>
             </label>
           </div>
         </details>
@@ -91,14 +92,13 @@
           <div class="card__head">
             <h2 class="card__title" id="h-privacy">
               <svg class="icon" aria-hidden="true"><use href="#i-lock"></use></svg>
-              Приватность
+              Данные и приватность
             </h2>
           </div>
           <ul class="plain-list">
             <li>Вопрос и вставленный текст уходят только в DeepSeek.</li>
-            <li>Ключ, история и настройки — в <code>chrome.storage.local</code>, без синхронизации.</li>
-            <li>Письма не отправляются автоматически — только вставка текста.</li>
-            <li>Внешних скриптов и CDN нет.</li>
+            <li>Ключ, история и настройки хранятся в этом браузере и не синхронизируются.</li>
+            <li>Помощник вставляет текст в черновик. Отправляете письмо вы.</li>
           </ul>
         </section>
       </div>
@@ -112,7 +112,7 @@
             </h2>
             <span class="badge" id="style-badge">0 примеров</span>
           </div>
-          <p class="card__desc">AI Bro подстраивается под ваши правки в письмах.</p>
+          <p class="card__desc">Задайте тон, длину и подпись для новых черновиков.</p>
 
           <div class="grid grid--2">
             <div class="field">
@@ -167,7 +167,7 @@
 
           <div class="learned">
             <div class="learned__head">
-              <h3 class="learned__title">Выученные правила</h3>
+              <h3 class="learned__title">Правила из ваших правок</h3>
               <button class="text-btn" id="btn-clear-style" type="button">Очистить</button>
             </div>
             <ul class="learned__list" id="learned-list"></ul>
@@ -189,7 +189,7 @@
             </h2>
             <span class="badge" id="voice-badge">проверка…</span>
           </div>
-          <p class="card__desc">Кнопка микрофона в боковой панели. Распознаёт браузер.</p>
+          <p class="card__desc">Надиктуйте вопрос через микрофон в панели помощника.</p>
 
           <label class="checkbox-row">
             <input type="checkbox" id="voice-enabled" checked />
@@ -209,7 +209,7 @@
 
           <label class="checkbox-row">
             <input type="checkbox" id="voice-autosend" />
-            <span><strong>Отправлять сразу после распознавания</strong></span>
+            <span><strong>Сразу задавать вопрос помощнику</strong></span>
           </label>
 
           <p class="field__hint warning">Аудио обрабатывает облако браузера (Google или Microsoft) — расширение его не получает.</p>

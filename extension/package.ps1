@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Builds the AI Bro Chromium extension package: dist\aibro-<version>.zip
+    Builds the ИИ помощник Chromium extension package: dist\ii-pomoshchnik-<version>.zip
 
 .DESCRIPTION
     - reads version from manifest.json;
@@ -49,7 +49,7 @@ if ([string]::IsNullOrWhiteSpace($version)) {
     throw 'manifest.json: "version" is empty or missing'
 }
 
-Write-Host ("AI Bro extension v{0}" -f $version) -ForegroundColor Cyan
+Write-Host ("ИИ помощник extension v{0}" -f $version) -ForegroundColor Cyan
 
 # ---------------------------------------------------------------------------
 # 1. Files referenced by the manifest must exist.
@@ -130,7 +130,7 @@ $payload = @(
 )
 if ($IncludeReadme) { $payload += 'README.md' }
 
-$staging = Join-Path $env:TEMP ("aibro-build-{0}" -f [guid]::NewGuid().ToString('N'))
+$staging = Join-Path $env:TEMP ("ii-pomoshchnik-build-{0}" -f [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $staging -Force | Out-Null
 
 function New-ExtensionZip {
@@ -192,7 +192,7 @@ try {
     foreach ($file in $junk) { Remove-Item -LiteralPath $file.FullName -Force }
 
     New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
-    $zipPath = Join-Path $OutputDirectory ("aibro-{0}.zip" -f $version)
+    $zipPath = Join-Path $OutputDirectory ("ii-pomoshchnik-{0}.zip" -f $version)
     if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
 
     try {
@@ -240,7 +240,7 @@ try {
     Write-Host '  Stores: upload the zip to Chrome Web Store / Microsoft Edge Add-ons'
 }
 finally {
-    if (Test-Path -LiteralPath $staging) {
+    if ((Test-Path -LiteralPath $staging) -and ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($staging)) -eq [IO.Path]::GetFullPath($env:TEMP).TrimEnd([IO.Path]::DirectorySeparatorChar))) {
         Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
     }
 }

@@ -3,7 +3,7 @@
  *
  * Задачи:
  *  - открывать side panel (иконка, горячая клавиша Ctrl+Shift+Y, контекстное меню);
- *  - контекстное меню «Спросить AI про выделенное»;
+ *  - контекстное меню «ИИ помощник» для выделенного текста;
  *  - по требованию инжектировать content.js в активную вкладку (activeTab + scripting);
  *  - маршрутизировать сообщения между side panel и content script;
  *  - хранить «отложенный контекст» (выделение/письмо), пока панель загружается.
@@ -16,7 +16,7 @@ import { STORAGE_KEYS, DEFAULT_SETTINGS, LIMITS, isWebmailHost } from './lib/con
 const MENU_OPEN = 'open-ai-bro';
 const CONTENT_TARGET = 'content';
 
-let memoryPending = null;
+const pendingByWindow = new Map();
 let cachedActiveTab = null;
 
 function rememberActiveTab(tab) {
@@ -65,33 +65,35 @@ function safeRuntimeSend(message) {
   }
 }
 
+function pendingKey(windowId) {
+  return `${STORAGE_KEYS.pending}:${windowId}`;
+}
+
 async function setPending(context) {
-  memoryPending = context;
-  try {
-    await chrome.storage.session.set({ [STORAGE_KEYS.pending]: context });
-  } catch {
-    /* storage.session недоступен — останется в памяти SW */
-  }
+  if (!Number.isInteger(context.windowId)) return;
+  pendingByWindow.set(context.windowId, context);
+  try { await chrome.storage.session.set({ [pendingKey(context.windowId)]: context }); } catch {}
 }
 
-async function readPending() {
-  let context = memoryPending;
+async function readPending(windowId) {
+  if (!Number.isInteger(windowId)) return null;
+  if (pendingByWindow.has(windowId)) return pendingByWindow.get(windowId);
   try {
-    const data = await chrome.storage.session.get(STORAGE_KEYS.pending);
-    if (data && data[STORAGE_KEYS.pending]) context = data[STORAGE_KEYS.pending];
-  } catch {
-    /* ignore */
-  }
-  return context || null;
+    const key = pendingKey(windowId);
+    const data = await chrome.storage.session.get(key);
+    return pendingByWindow.has(windowId) ? pendingByWindow.get(windowId) : data[key] || null;
+  } catch { return null; }
 }
 
-async function clearPending() {
-  memoryPending = null;
+async function clearPending(id, windowId) {
+  if (!Number.isInteger(windowId)) return;
+  const current = await readPending(windowId);
+  if (!current || (id && current.id !== id) || (pendingByWindow.has(windowId) && pendingByWindow.get(windowId) !== current)) return;
+  pendingByWindow.set(windowId, null);
   try {
-    await chrome.storage.session.remove(STORAGE_KEYS.pending);
-  } catch {
-    /* ignore */
-  }
+    await chrome.storage.session.remove(pendingKey(windowId));
+    if (pendingByWindow.get(windowId) === null) pendingByWindow.delete(windowId);
+  } catch {}
 }
 
 /* ------------------------------------------------------------------ */
@@ -103,7 +105,7 @@ async function setupSidePanelBehavior() {
     await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
     return true;
   } catch (error) {
-    console.warn('[AI Bro] setPanelBehavior недоступен:', error && error.message);
+    console.warn('[ИИ помощник] setPanelBehavior недоступен:', error && error.message);
     return false;
   }
 }
@@ -118,7 +120,7 @@ async function openPanelWindow(tab) {
     await chrome.windows.create({ url, type: 'popup', width: 430, height: 800 });
     return true;
   } catch (error) {
-    console.warn('[AI Bro] fallback window:', error && error.message);
+    console.warn('[ИИ помощник] fallback window:', error && error.message);
     return false;
   }
 }
@@ -138,13 +140,13 @@ function openPanelForTab(tab) {
         const promise = chrome.sidePanel.open(option);
         if (promise && typeof promise.catch === 'function') {
           promise.catch((error) => {
-            console.warn('[AI Bro] sidePanel.open не удался, fallback:', error && error.message);
+            console.warn('[ИИ помощник] sidePanel.open не удался, fallback:', error && error.message);
             openPanelWindow(target);
           });
         }
         return true;
       } catch (error) {
-        console.warn('[AI Bro] sidePanel.open исключение:', error && error.message);
+        console.warn('[ИИ помощник] sidePanel.open исключение:', error && error.message);
       }
     }
   }
@@ -168,7 +170,7 @@ function createContextMenus() {
           try {
             chrome.contextMenus.removeAll(() => {
               void chrome.runtime.lastError;
-              const items = [{ id: MENU_OPEN, title: 'Открыть AI Bro', contexts: ['page', 'selection'] }];
+              const items = [{ id: MENU_OPEN, title: 'Открыть «ИИ помощник»', contexts: ['page', 'selection'] }];
               for (const item of items) {
                 try {
                   chrome.contextMenus.create(item, () => {
@@ -188,22 +190,20 @@ function createContextMenus() {
     .catch(() => {});
 }
 
-async function readSelectionFromTab(tabId) {
-  try {
-    const results = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: () => String(window.getSelection ? window.getSelection().toString() : '').slice(0, 4000),
-    });
-    return (results && results[0] && results[0].result) || '';
-  } catch {
-    return '';
-  }
-}
-
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (!tab || !Number.isInteger(tab.id)) return;
-  // Единственный пункт меню — открыть панель. Контент не читаем.
+  if (!info || info.menuItemId !== MENU_OPEN || !tab || !Number.isInteger(tab.id)) return;
   openPanelForTab(tab);
+  const text = String(info.selectionText || '').trim();
+  if (!text) return;
+  const context = {
+    id: crypto.randomUUID(),
+    kind: 'selection',
+    text: text.slice(0, LIMITS.mailChars),
+    truncated: text.length > LIMITS.mailChars,
+    windowId: tab.windowId,
+    ts: Date.now(),
+  };
+  setPending(context).then(() => safeRuntimeSend({ type: 'CONTEXT_PUSH', context }));
 });
 
 /* ------------------------------------------------------------------ */
@@ -215,11 +215,10 @@ chrome.action.onClicked.addListener((tab) => {
   openPanelForTab(tab);
 });
 
-chrome.commands.onCommand.addListener((command) => {
+chrome.commands.onCommand.addListener((command, tab) => {
   if (command !== 'open-panel') return;
-  // Кэш активной вкладки обновляется listeners ниже; открываем без await.
-  if (cachedActiveTab) {
-    openPanelForTab(cachedActiveTab);
+  if (tab && Number.isInteger(tab.id)) {
+    openPanelForTab(tab);
     return;
   }
   chrome.tabs
@@ -276,27 +275,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // --- от content script: пользователь нажал плавающую кнопку на почте
   if (type === 'AI_COPILOT_FROM_PAGE') {
-    const tab = sender && sender.tab;
-    // Сначала жест: sidePanel.open синхронно, затем сохранение контекста.
-    if (tab) openPanelForTab(tab);
-    const payload = message.payload && typeof message.payload === 'object' ? message.payload : {};
-    const context = {
-      kind: payload.kind || 'page',
-      site: payload.site || null,
-      text: String(payload.text || '').slice(0, LIMITS.selectionChars),
-      mail: payload.mail || null,
-      page: payload.page || null,
-      url: (tab && tab.url) || '',
-      title: (tab && tab.title) || '',
-      ts: Date.now(),
-    };
-    (async () => {
-      await setPending(context);
-      safeRuntimeSend({ type: 'CONTEXT_PUSH', context });
-      sendResponse({ ok: true });
-    })();
-    return true;
+    if (!sender?.tab || !isWebmailUrl(sender.url || sender.tab.url)) return undefined;
+    openPanelForTab(sender.tab);
+    sendResponse({ ok: true });
+    return undefined;
   }
+
+  if (sender?.tab && !sender.url?.startsWith(chrome.runtime.getURL(''))) return undefined;
 
   if (type === 'ENSURE_CONTENT') {
     const tabId = Number(message.tabId);
@@ -311,8 +296,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (type === 'GET_ACTIVE_TAB') {
+    if (!Number.isInteger(message.windowId)) {
+      sendResponse({ ok: false, reason: 'NO_TAB' });
+      return undefined;
+    }
     chrome.tabs
-      .query({ active: true, lastFocusedWindow: true })
+      .query({ active: true, windowId: message.windowId })
       .then((tabs) => {
         const tab = tabs && tabs[0];
         if (!tab) {
@@ -346,9 +335,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (type === 'GET_PENDING_CONTEXT') {
-    readPending()
+    readPending(message.windowId)
       .then(async (context) => {
-        if (message.clear !== false) await clearPending();
+        if (context && message.clear !== false) await clearPending(context.id, message.windowId);
         sendResponse({ ok: true, context: context || null });
       })
       .catch(() => sendResponse({ ok: true, context: null }));
@@ -356,13 +345,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (type === 'CLEAR_PENDING_CONTEXT') {
-    clearPending().then(() => sendResponse({ ok: true }));
-    return true;
-  }
-
-  if (type === 'SET_PENDING_CONTEXT') {
-    const context = message.context && typeof message.context === 'object' ? message.context : null;
-    (context ? setPending(context) : clearPending()).then(() => sendResponse({ ok: true }));
+    clearPending(message.id, message.windowId).then(() => sendResponse({ ok: true }));
     return true;
   }
 
@@ -412,7 +395,7 @@ async function seedDefaults() {
       await chrome.storage.local.set({ [STORAGE_KEYS.settings]: { ...DEFAULT_SETTINGS } });
     }
   } catch (error) {
-    console.warn('[AI Bro] seedDefaults:', error && error.message);
+    console.warn('[ИИ помощник] seedDefaults:', error && error.message);
   }
 }
 
@@ -456,4 +439,6 @@ chrome.tabs
   .catch(() => {});
 
 // Стартовое поведение (SW мог проснуться без onInstalled/onStartup).
+chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }).catch(() => {});
+createContextMenus();
 setupSidePanelBehavior();

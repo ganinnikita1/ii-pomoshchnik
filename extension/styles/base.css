@@ -1,53 +1,49 @@
-/* base.css — дизайн-токены и элементы интерфейса в стиле bb (get-bb/bb):
-   монохромный тёмный IDE, hairline-бордеры, инвертированные primary-кнопки,
-   Inter/system-ui + mono для микро-лейблов. Без градиентов и цветных glow. */
+/* Inter 4.1, bundled under the SIL Open Font License in fonts/OFL.txt. */
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("fonts/InterVariable.woff2") format("woff2");
+}
 
 :root {
   color-scheme: dark;
   --font-sans: "Inter Variable", "Inter", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "Fira Code", "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
-  /* bb dark ramp */
-  --bg: #2f3440;
-  --bg-elev: #363a46;
-  --bg-elev-2: #3d424e;
-  --bg-inset: #282c35;
-  --surface-hover: #3d424e;
-
-  --border: #434a57;
-  --border-soft: rgba(255, 255, 255, 0.1);
-  --border-strong: #4d5564;
-  --border-hairline: rgba(255, 255, 255, 0.08);
-
-  --text: #e6e9ef;
-  --text-muted: #aab2c0;
-  --text-faint: #a2abb9; /* AA на surface-raised (4.9:1), приглушённее muted */
-
-  /* акцент = инверсия, как primary в bb */
-  --accent: #e6e9ef;
-  --accent-2: #c7cdd8;
-  --accent-contrast: #1b1e24;
-  --accent-soft: rgba(230, 233, 239, 0.1);
-  --accent-softer: rgba(230, 233, 239, 0.05);
-  --primary-hover: #f4f6f9;
-
-  --success: #4ec264;
-  --success-soft: rgba(78, 194, 100, 0.12);
-  --warning: #d9a441;
-  --warning-soft: rgba(217, 164, 65, 0.12);
-  --danger: #e5a3a9;
-  --danger-soft: rgba(191, 97, 106, 0.16);
-
-  --radius-lg: 10px;
-  --radius: 8px;
-  --radius-sm: 6px;
-  --radius-xs: 4px;
-  --radius-pill: 6px; /* в bb чипы/теги прямоугольные */
-
+  --bg: #242622;
+  --bg-elev: #2d302b;
+  --bg-elev-2: #393d37;
+  --bg-inset: #21241f;
+  --surface-hover: var(--bg-elev-2);
+  --border: #50554c;
+  --border-soft: #484d43;
+  --border-strong: #70766a;
+  --border-hairline: #42473e;
+  --text: #f0eee5;
+  --text-muted: #cdcfc3;
+  --text-faint: #aaaea1;
+  --accent: #edab8e;
+  --accent-2: #fbc8b2;
+  --accent-contrast: #341b12;
+  --accent-soft: #48352b;
+  --accent-softer: #38312a;
+  --primary-hover: var(--accent-2);
+  --success: #8fd6a0;
+  --success-soft: #28392e;
+  --warning: #e5bd78;
+  --warning-soft: #3b3223;
+  --danger: #ffb4aa;
+  --danger-soft: #452f2b;
+  --radius-lg: 14px;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-xs: 5px;
+  --radius-pill: 8px;
   --shadow-1: none;
-  --shadow-2: 0 16px 40px rgba(0, 0, 0, 0.5);
-  --focus-ring: 0 0 0 3px rgba(230, 233, 239, 0.22);
-
+  --shadow-2: 0 12px 32px #0004;
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -55,47 +51,33 @@
   --space-5: 20px;
   --space-6: 28px;
 
-  --gradient-brand: linear-gradient(var(--text), var(--text));
-  --gradient-text: none;
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #ffffff;
-  --bg-elev: #f6f6f6;
-  --bg-elev-2: #efefed;
-  --bg-inset: #f4f4f2;
-  --surface-hover: #ececea;
-
-  --border: #e3e3dd;
-  --border-soft: rgba(27, 27, 29, 0.1);
-  --border-strong: #cfcfc8;
-  --border-hairline: rgba(27, 27, 29, 0.08);
-
-  --text: #1b1b1d;
-  --text-muted: #5c5c5f;
-  --text-faint: #6e6e74; /* AA на canvas и surface-raised */
-
-  --accent: #1b1b1d;
-  --accent-2: #3a3a3d;
-  --accent-contrast: #ffffff;
-  --accent-soft: rgba(27, 27, 29, 0.07);
-  --accent-softer: rgba(27, 27, 29, 0.04);
-  --primary-hover: #2c2c2f;
-
-  --success: #237a40;
-  --success-soft: rgba(35, 122, 64, 0.1);
-  --warning: #8f6a1a;
-  --warning-soft: rgba(143, 106, 26, 0.1);
-  --danger: #a8434c;
-  --danger-soft: rgba(168, 67, 76, 0.1);
-
-  --shadow-1: none;
-  --shadow-2: 0 16px 40px rgba(27, 27, 29, 0.18);
-  --focus-ring: 0 0 0 3px rgba(27, 27, 29, 0.18);
-
-  --gradient-brand: linear-gradient(var(--text), var(--text));
-  --gradient-text: none;
+  --bg: #faf8f3;
+  --bg-elev: #fffefa;
+  --bg-elev-2: #eeede5;
+  --bg-inset: #f3f1e9;
+  --border: #d6d5c9;
+  --border-soft: #e1dfd3;
+  --border-strong: #aaa99a;
+  --border-hairline: #e6e3d9;
+  --text: #292923;
+  --text-muted: #56594e;
+  --text-faint: #686b61;
+  --accent: #a83f26;
+  --accent-2: #86331e;
+  --accent-contrast: #fffaf0;
+  --accent-soft: #f4e3d9;
+  --accent-softer: #f7eee4;
+  --success: #356442;
+  --success-soft: #eaf1e8;
+  --warning: #79521e;
+  --warning-soft: #f3ead6;
+  --danger: #9b3531;
+  --danger-soft: #f7e6e1;
+  --shadow-2: 0 12px 32px #322d201f;
 }
 
 *,
@@ -192,8 +174,8 @@ button {
 .icon-btn {
   display: inline-grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
@@ -233,7 +215,7 @@ button {
   height: 16px;
   stroke: currentColor;
   fill: none;
-  stroke-width: 1.65;
+  stroke-width: 1.75;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -245,9 +227,9 @@ button {
   gap: 6px;
   min-height: 30px;
   padding: 5px 12px;
-  border: 1px solid var(--text);
+  border: 1px solid var(--accent);
   border-radius: var(--radius-sm);
-  background: var(--text);
+  background: var(--accent);
   color: var(--accent-contrast);
   font-weight: 600;
   font-size: 12.5px;
@@ -338,12 +320,9 @@ button {
 }
 
 .field__label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text);
 }
 
 .field__hint {
@@ -433,11 +412,8 @@ button {
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -473,9 +449,8 @@ button {
   border-radius: var(--radius);
   background: var(--bg-elev-2);
   color: var(--text);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
+  font-size: 13px;
+  font-weight: 500;
   box-shadow: var(--shadow-2);
   opacity: 0;
   pointer-events: none;
@@ -516,34 +491,16 @@ button {
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition: none !important;
   }
 }
 
-/* ---------------------------------------------------------------- */
-/* brand mark: инвертированный ink-квадрат с монограммой (bb)        */
-/* ---------------------------------------------------------------- */
-
 .brand-mark {
-  display: inline-grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   flex: none;
-  border-radius: var(--radius-sm);
-  background: var(--text);
-  color: var(--bg);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1;
-  user-select: none;
 }
-
-.brand-mark--lg {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius);
-  font-size: 14px;
+.brand-mark--lg { width: 40px; height: 40px; }
+@media (forced-colors: active) {
+  :focus-visible { outline: 2px solid Highlight; }
 }

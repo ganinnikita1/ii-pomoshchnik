@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "AI Bro",
-  "short_name": "AI Bro",
-  "version": "0.2.19",
-  "description": "AI Bro: ответы на письма и разбор вставленного текста в Gmail, Outlook и Яндекс Почте.",
-  "minimum_chrome_version": "114",
+  "name": "ИИ помощник",
+  "short_name": "ИИ помощник",
+  "version": "0.3.0",
+  "description": "Вставьте текст письма, получите варианты ответа или краткую сводку и перенесите результат в черновик почты.",
+  "minimum_chrome_version": "116",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -12,7 +12,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "AI Bro — открыть панель (Ctrl+Shift+Y)",
+    "default_title": "ИИ помощник — открыть панель",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
@@ -36,7 +36,7 @@
   ],
   "host_permissions": [],
   "optional_host_permissions": [
-    "https://*/*"
+    "https://api.deepseek.com/*"
   ],
   "content_scripts": [
     {
@@ -75,7 +75,7 @@
         "default": "Ctrl+Shift+Y",
         "mac": "Command+Shift+Y"
       },
-      "description": "Открыть «AI Bro»"
+      "description": "Открыть «ИИ помощник»"
     }
   },
   "content_security_policy": {

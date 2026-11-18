@@ -1,6 +1,3 @@
-/* options.css — страница настроек в стиле bb: canvas, hairline-карточки,
-   mono-заголовки секций, инвертированные primary-кнопки. */
-
 body {
   min-height: 100vh;
   background: var(--bg);
@@ -22,7 +19,7 @@ body {
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  padding: 12px clamp(16px, 4vw, 40px);
+  padding: 12px max(16px, calc((100vw - 944px) / 2));
   border-bottom: 1px solid var(--border);
   background: var(--bg);
 }
@@ -36,15 +33,14 @@ body {
 
 .page-head__title {
   margin: 0;
-  font-size: 17px;
-  font-weight: 600;
+  font: 26px/1.15 Georgia, "Times New Roman", serif;
   letter-spacing: -0.2px;
   color: var(--text);
 }
 
 .page-head__subtitle {
   margin: 2px 0 0;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-muted);
 }
 
@@ -57,12 +53,12 @@ body {
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: minmax(0, .95fr) minmax(0, 1.15fr);
+  gap: 16px;
   align-items: start;
-  max-width: 1180px;
+  max-width: 1024px;
   margin: 0 auto;
-  padding: 14px clamp(16px, 4vw, 40px) 56px;
+  padding: 24px clamp(16px, 4vw, 40px) 56px;
 }
 
 .column {
@@ -73,10 +69,10 @@ body {
 }
 
 .card {
-  padding: 14px 15px 16px;
+  padding: 20px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--bg);
+  background: var(--bg-elev);
   box-shadow: none;
 }
 
@@ -98,14 +94,11 @@ body {
 .card__title {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   margin: 0;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
 }
 
 .card__title .icon {
@@ -116,13 +109,13 @@ body {
 
 .card__desc {
   margin: 0 0 12px;
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.55;
   color: var(--text-muted);
   max-width: 74ch;
 }
 
-.card .field + .field,
+.card > .field + .field,
 .card .grid + .field,
 .card .field + .grid,
 .card .grid + .grid,
@@ -145,6 +138,7 @@ body {
 }
 
 .grid--2 {
+  align-items: start;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -326,12 +320,9 @@ output {
 
 .learned__title {
   margin: 0;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
 }
 
 .learned__list {
@@ -404,9 +395,10 @@ output {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .page-head__actions {
-    width: 100%;
-  }
+  .page-head__actions .version { display: none; }
+  .page-head { gap: 8px; }
+  .card { padding: 16px; }
+  .card--details { padding: 0; }
 }
 
 /* ---------------------------------------------------------------- */
@@ -415,8 +407,8 @@ output {
 
 .version {
   font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  font-size: 11px;
+  letter-spacing: normal;
   color: var(--text-faint);
   padding-right: 4px;
   user-select: none;
@@ -430,21 +422,21 @@ output {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 12px 14px;
+  padding: 16px 20px;
   cursor: pointer;
   list-style: none;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
   user-select: none;
 }
 
 .card__summary::-webkit-details-marker {
   display: none;
 }
+
+.card__summary::after { content: "⌄"; margin-left: auto; }
+.card--details[open] .card__summary::after { transform: rotate(180deg); }
 
 .card__summary:hover {
   color: var(--text);
