@@ -54,6 +54,12 @@
             </div>
           </div>
 
+          <div class="field">
+            <label class="field__label" for="model">Модель DeepSeek</label>
+            <select class="select-input" id="model" aria-describedby="model-hint"></select>
+            <p class="field__hint" id="model-hint">Введите ключ и обновите список, чтобы увидеть доступные вам модели.</p>
+          </div>
+
           <div class="test-result" id="test-result" role="status" aria-live="polite" hidden>
             <svg class="icon" aria-hidden="true"><use id="test-icon" href="#i-check"></use></svg>
             <div class="test-result__body">
@@ -65,7 +71,7 @@
           <div class="card__actions">
             <button class="ghost-btn" id="btn-test" type="button">
               <svg class="icon" aria-hidden="true"><use href="#i-plug"></use></svg>
-              Проверить соединение
+              Обновить список моделей
             </button>
             <span class="card__spacer"></span>
             <button class="danger-btn" id="btn-reset" type="button">
@@ -104,81 +110,69 @@
       </div>
 
       <div class="column">
-        <section class="card" aria-labelledby="h-style">
+        <section class="card style-card" id="style-card" aria-labelledby="h-style">
           <div class="card__head">
-            <h2 class="card__title" id="h-style">
-              <svg class="icon" aria-hidden="true"><use href="#i-pen"></use></svg>
-              Ваш стиль письма
-            </h2>
-            <span class="badge" id="style-badge">0 примеров</span>
+            <h2 class="card__title" id="h-style"><svg class="icon" aria-hidden="true"><use href="#i-pen"></use></svg>Ваш стиль письма</h2>
           </div>
-          <p class="card__desc">Задайте тон, длину и подпись для новых черновиков.</p>
+          <p class="card__desc">Подберите тон и длину. Пример ниже изменится сразу.</p>
+          <fieldset class="style-choice">
+            <legend>Тон письма</legend>
+            <div class="segmented">
+              <label class="segmented__item"><input type="radio" name="tone" value="2" /><span>Дружеский</span></label>
+              <label class="segmented__item"><input type="radio" name="tone" value="3" checked /><span>Нейтральный</span></label>
+              <label class="segmented__item"><input type="radio" name="tone" value="4" /><span>Деловой</span></label>
+            </div>
+          </fieldset>
+          <fieldset class="style-choice">
+            <legend>Длина ответа</legend>
+            <div class="segmented">
+              <label class="segmented__item"><input type="radio" name="length" value="short" /><span>Коротко</span></label>
+              <label class="segmented__item"><input type="radio" name="length" value="normal" checked /><span>Один абзац</span></label>
+              <label class="segmented__item"><input type="radio" name="length" value="detailed" /><span>Подробнее</span></label>
+            </div>
+          </fieldset>
+          <div class="style-example">
+            <h3>Пример ответа на приглашение</h3>
+            <p id="style-preview"></p>
+          </div>
 
-          <div class="grid grid--2">
-            <div class="field">
-              <label class="field__label" for="formality">Формальность: <output id="formality-out">3</output>/5</label>
-              <input class="range-input" id="formality" type="range" min="1" max="5" step="1" value="3" />
+          <details class="style-details">
+            <summary>Обращение и подпись</summary>
+            <div class="style-details__body">
+          <fieldset class="style-choice">
+            <legend>Как обращаться</legend>
+            <div class="segmented">
+              <label class="segmented__item"><input type="radio" name="address" value="вы" checked /><span>На «вы»</span></label>
+              <label class="segmented__item"><input type="radio" name="address" value="ты" /><span>На «ты»</span></label>
             </div>
-            <div class="field">
-              <label class="field__label" for="length">Длина</label>
-              <select class="select-input" id="length">
-                <option value="short">Коротко</option>
-                <option value="normal">Средне</option>
-                <option value="detailed">Подробно</option>
-              </select>
+          </fieldset>
+              <div class="field"><label class="field__label" for="signoff">Как закончить письмо</label>
+                <input class="text-input" id="signoff" type="text" placeholder="Например, «До встречи!»" maxlength="200" /></div>
+              <div class="field"><label class="field__label" for="signature">Ваша подпись</label>
+                <textarea class="textarea-input" id="signature" rows="2" maxlength="400" placeholder="Имя и должность"></textarea></div>
             </div>
-            <div class="field">
-              <label class="field__label" for="emoji">Эмодзи</label>
-              <select class="select-input" id="emoji">
-                <option value="never">Нет</option>
-                <option value="rarely">Редко</option>
-                <option value="ok">Уместно</option>
-              </select>
-            </div>
-            <div class="field">
-              <span class="field__label">Обращение</span>
-              <div class="segmented" role="radiogroup" aria-label="Обращение">
-                <label class="segmented__item">
-                  <input type="radio" name="address" value="вы" checked />
-                  <span>на «вы»</span>
-                </label>
-                <label class="segmented__item">
-                  <input type="radio" name="address" value="ты" />
-                  <span>на «ты»</span>
-                </label>
+          </details>
+          <details class="style-details">
+            <summary>Свои правила для ответов</summary>
+            <div class="style-details__body">
+              <div class="field"><label class="field__label" for="replyInstruction">Что учитывать в черновике</label>
+                <div class="style-tags" aria-label="Быстрые правила">
+                  <button type="button" data-rule="Без канцелярита" aria-pressed="false">Без канцелярита</button>
+                  <button type="button" data-rule="Сначала вывод" aria-pressed="false">Сначала вывод</button>
+                </div>
+                <textarea class="textarea-input" id="replyInstruction" rows="2" maxlength="500" placeholder="Например: предлагай один следующий шаг"></textarea></div>
+              <div class="field"><label class="field__label" for="emoji">Эмодзи</label>
+                <select class="select-input" id="emoji"><option value="never">Не использовать</option><option value="rarely">Изредка</option><option value="ok">Когда уместно</option></select></div>
+              <div class="learned__head"><h3 class="learned__title">Из ваших правок</h3>
+                <span id="style-badge" class="badge" hidden></span></div>
+              <ul class="learned__list" id="learned-list"></ul>
+              <div class="card__actions">
+                <button class="text-btn" id="btn-clear-style" type="button" hidden>Очистить примеры</button>
+                <button class="text-btn" id="btn-export" type="button">Скачать профиль</button>
               </div>
             </div>
-          </div>
-
-          <div class="field">
-            <label class="field__label" for="replyInstruction">Инструкция к ответам (необязательно)</label>
-            <textarea class="textarea-input" id="replyInstruction" rows="2" maxlength="500" placeholder="Например: отвечай кратко, от имени руководителя, без канцелярита"></textarea>
-          </div>
-
-          <div class="field">
-            <label class="field__label" for="signoff">Завершение</label>
-            <input class="text-input" id="signoff" type="text" placeholder="С уважением" maxlength="120" />
-          </div>
-
-          <div class="field">
-            <label class="field__label" for="signature">Подпись</label>
-            <textarea class="textarea-input" id="signature" rows="2" maxlength="400" placeholder="Иван Петров, менеджер проектов"></textarea>
-          </div>
-
-          <div class="learned">
-            <div class="learned__head">
-              <h3 class="learned__title">Правила из ваших правок</h3>
-              <button class="text-btn" id="btn-clear-style" type="button">Очистить</button>
-            </div>
-            <ul class="learned__list" id="learned-list"></ul>
-          </div>
-
-          <div class="card__actions">
-            <button class="ghost-btn" id="btn-export" type="button">
-              <svg class="icon" aria-hidden="true"><use href="#i-download"></use></svg>
-              Экспорт профиля
-            </button>
-          </div>
+          </details>
+          <div class="card__actions"><button class="ghost-btn" id="btn-save-style" type="button">Сохранить стиль</button></div>
         </section>
 
         <section class="card" aria-labelledby="h-voice">

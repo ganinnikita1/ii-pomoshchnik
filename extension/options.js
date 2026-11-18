@@ -1,18 +1,15 @@
-/**
- * options.js — минималистичные настройки: только API-ключ DeepSeek.
- * Модель и адрес обработки зафиксированы в коде; в UI их не выбрать.
- * Плюс стиль письма, голос и приватность. Стиль bb.
- */
+/** Настройки подключения DeepSeek, стиля письма, голосового ввода и приватности. */
 
 import {
   STORAGE_KEYS,
   VOICE_LANGS,
   DEFAULT_SETTINGS,
+  PROVIDER_PRESETS,
   normalizeSettings,
   originPattern,
   isDemoMode,
 } from './lib/config.js';
-import { testConnection, describeLLMError } from './lib/llm-client.js';
+import { hasOriginPermission, testConnection } from './lib/llm-client.js';
 import { normalizeProfile, clearLearning, profileStats } from './lib/style-profile.js';
 
 const $ = (id) => document.getElementById(id);
@@ -20,6 +17,8 @@ const $ = (id) => document.getElementById(id);
 const el = {
   version: $('app-version'),
   apiKey: $('apiKey'),
+  model: $('model'),
+  modelHint: $('model-hint'),
   toggleKey: $('btn-toggle-key'),
   streaming: $('streaming'),
   testResult: $('test-result'),
@@ -29,9 +28,8 @@ const el = {
   btnTest: $('btn-test'),
   btnSave: $('btn-save'),
   btnReset: $('btn-reset'),
-  formality: $('formality'),
-  formalityOut: $('formality-out'),
-  length: $('length'),
+  styleCard: $('style-card'),
+  stylePreview: $('style-preview'),
   emoji: $('emoji'),
   signoff: $('signoff'),
   signature: $('signature'),
@@ -105,17 +103,39 @@ function fillVoiceLanguages(selected) {
   el.voiceLang.value = selected;
 }
 
+let modelRequest = 0;
+
+function fillModels(models, selected, unavailable = false) {
+  el.model.replaceChildren();
+  for (const id of models) el.model.add(new Option(id, id));
+  if (!models.includes(selected)) {
+    const option = new Option(unavailable ? selected + ' — недоступна' : selected, selected);
+    option.disabled = unavailable;
+    el.model.add(option, 0);
+  }
+  el.model.value = selected;
+}
+
+function resetModels(selected) {
+  modelRequest += 1;
+  el.btnTest.disabled = false;
+  el.testResult.hidden = true;
+  fillModels(PROVIDER_PRESETS.deepseek.models, selected);
+  el.modelHint.textContent = 'Введите ключ и обновите список, чтобы увидеть доступные вам модели.';
+}
+
 function applyForm(settings, profile) {
   el.apiKey.value = settings.apiKey;
+  resetModels(settings.model);
   el.streaming.checked = settings.streaming;
 
   fillVoiceLanguages(settings.voice.lang);
   el.voiceEnabled.checked = settings.voice.enabled;
   el.voiceAutosend.checked = settings.voice.autoSend;
 
-  el.formality.value = String(profile.prefs.formality);
-  el.formalityOut.textContent = String(profile.prefs.formality);
-  el.length.value = profile.prefs.length;
+  for (const [name, value] of [['tone', toneGroup(profile.prefs.formality)], ['length', profile.prefs.length]]) {
+    el.styleCard.querySelector(`input[name="${name}"][value="${value}"]`).checked = true;
+  }
   el.emoji.value = profile.prefs.emoji;
   el.signoff.value = profile.prefs.signoff;
   el.signature.value = profile.prefs.signature;
@@ -123,6 +143,7 @@ function applyForm(settings, profile) {
   if (address) address.checked = true;
   el.replyInstruction.value = settings.replyInstruction;
 
+  renderStylePreview();
   renderLearned();
   renderVoiceAvailability();
 }
@@ -131,6 +152,7 @@ function readForm() {
   const settings = normalizeSettings({
     ...state.settings,
     apiKey: el.apiKey.value.trim(),
+    model: el.model.value,
     streaming: el.streaming.checked,
     replyInstruction: el.replyInstruction.value,
     voice: {
@@ -141,14 +163,7 @@ function readForm() {
   });
   const profile = normalizeProfile({
     ...state.profile,
-    prefs: {
-      formality: Number(el.formality.value) || 3,
-      length: el.length.value,
-      emoji: el.emoji.value,
-      address: readRadio('address') === 'ты' ? 'ты' : 'вы',
-      signoff: el.signoff.value.trim(),
-      signature: el.signature.value.trim(),
-    },
+    prefs: readStylePrefs(),
   });
   return { settings, profile };
 }
@@ -157,11 +172,61 @@ function readForm() {
 /* learned rules / voice                                               */
 /* ------------------------------------------------------------------ */
 
+function toneGroup(value) {
+  return Math.max(2, Math.min(4, value));
+}
+
+function readStylePrefs() {
+  const tone = Number(readRadio('tone'));
+  const previous = state.profile.prefs.formality;
+  return {
+    // Existing profiles may use levels 1 or 5. Keep that nuance until the tone changes.
+    formality: toneGroup(previous) === tone ? previous : tone,
+    length: readRadio('length'), emoji: el.emoji.value, address: readRadio('address'),
+    signoff: el.signoff.value.trim(), signature: el.signature.value.trim(),
+  };
+}
+
+function renderStylePreview() {
+  const prefs = readStylePrefs();
+  const casual = prefs.address === 'ты';
+  const tone = toneGroup(prefs.formality);
+  const opening = tone === 2 ? 'Отлично, четверг подходит!' :
+    tone === 4 ? 'Подтверждаю встречу в четверг в 15:00.' : 'В четверг в 15:00 мне удобно.';
+  const request = casual ? 'Пришли, пожалуйста, ссылку.' : 'Пришлите, пожалуйста, ссылку.';
+  const lines = [prefs.length === 'short' ? opening : opening + ' ' + request];
+  if (prefs.length === 'detailed') lines.push(tone === 2 ? 'Соберу вопросы заранее, чтобы было время всё обсудить.' : 'До встречи подготовлю вопросы по проекту.');
+  if (prefs.emoji === 'ok' && tone === 2) lines[0] += ' 🙂';
+  const signature = [prefs.signoff, prefs.signature].filter(Boolean).join('\n');
+  if (signature) lines.push(signature);
+  el.stylePreview.textContent = lines.join('\n\n');
+  const field = el.replyInstruction;
+  for (const btn of el.styleCard.querySelectorAll('[data-rule]')) {
+    const picked = field.value.split('\n').some(line => line.trim() === btn.dataset.rule);
+    btn.setAttribute('aria-pressed', String(picked));
+    btn.disabled = !picked && (field.value.trimEnd() + '\n' + btn.dataset.rule).trim().length > field.maxLength;
+  }
+}
+
+async function saveStyleOnly() {
+  const keys = STORAGE_KEYS;
+  const prefs = readStylePrefs();
+  const instruction = el.replyInstruction.value.trim();
+  const stored = await chrome.storage.local.get([keys.settings, keys.profile]);
+  const update = { [keys.profile]: { ...normalizeProfile(stored[keys.profile]), prefs } };
+  const saved = normalizeSettings(stored[keys.settings]);
+  if (saved.replyInstruction !== instruction) update[keys.settings] = { ...saved, replyInstruction: instruction };
+  await chrome.storage.local.set(update);
+  toast('Стиль сохранён');
+}
+
 function renderLearned() {
   el.learnedList.textContent = '';
   const stats = profileStats(state.profile);
   el.styleBadge.textContent = `${stats.samples} ${{ one: 'пример', few: 'примера', many: 'примеров', other: 'примера' }[new Intl.PluralRules('ru').select(stats.samples)]}`;
   el.styleBadge.className = stats.samples ? 'badge badge--ok' : 'badge';
+  el.styleBadge.hidden = !stats.samples;
+  el.btnClearStyle.hidden = !stats.samples && !stats.rules;
   const rules = state.profile.rules || [];
   if (!rules.length) {
     const empty = document.createElement('li');
@@ -227,6 +292,11 @@ function requestProviderPermission(settings) {
 
 function onSave() {
   const { settings, profile } = readForm();
+  if (!isDemoMode(settings) && el.model.selectedOptions[0]?.disabled) {
+    renderTestResult('error', 'Выберите доступную модель.', 'Настройки можно сохранить после выбора модели из списка.');
+    el.model.focus();
+    return;
+  }
   // Вызов chrome.permissions.request должен идти сразу из жеста.
   const permissionPromise = isDemoMode(settings) ? Promise.resolve(true) : requestProviderPermission(settings);
   (async () => {
@@ -236,30 +306,42 @@ function onSave() {
   })().catch((error) => toast(`Не удалось сохранить: ${error && error.message ? error.message : error}`, true));
 }
 
-function onTest() {
-  const { settings, profile } = readForm();
-  if (isDemoMode(settings)) {
+async function refreshModels(automatic = false) {
+  const { settings } = readForm();
+  if (!settings.apiKey) {
     renderTestResult('error', 'Вставьте API-ключ', 'Без ключа работает демо-режим.');
     el.apiKey.focus();
     return;
   }
+  const request = ++modelRequest;
   el.btnTest.disabled = true;
-  renderTestResult('pending', 'Проверяем соединение…', '');
-  const permissionPromise = requestProviderPermission(settings);
-  (async () => {
-    const granted = await permissionPromise;
+  try {
+    const granted = await (automatic ? hasOriginPermission(settings) : requestProviderPermission(settings));
+    if (request !== modelRequest) return;
     if (!granted) {
-      renderTestResult('error', 'Нет доступа к api.deepseek.com', 'Разрешите домен в запросе браузера.');
+      if (!automatic) renderTestResult('error', 'Нет доступа к api.deepseek.com', 'Разрешите доступ в окне браузера.');
       return;
     }
-    await persist(settings, profile);
+    renderTestResult('pending', 'Загружаем модели…');
     const result = await testConnection({ settings });
+    if (request !== modelRequest) return;
+    if (result.models) {
+      let selected = el.model.value;
+      const unavailable = !result.models.includes(selected);
+      if (unavailable && result.models.length && !state.settings.apiKey) selected = result.models[0];
+      fillModels(result.models, selected, !result.models.includes(selected));
+      el.modelHint.textContent = result.models.length
+        ? 'Выберите модель и нажмите «Сохранить настройки».'
+        : 'Проверьте доступ к моделям в аккаунте DeepSeek.';
+      if (result.ok && el.model.selectedOptions[0]?.disabled) {
+        renderTestResult('error', 'Выбранная модель недоступна.', 'Выберите другую модель и сохраните настройки.');
+        return;
+      }
+    }
     renderTestResult(result.ok ? 'ok' : 'error', result.message, result.hint || '');
-    toast(result.ok ? 'Соединение работает' : 'Проверка не удалась', !result.ok);
-  })().catch((error) => {
-    const info = describeLLMError(error);
-    renderTestResult('error', info.title, info.hint || '');
-  }).finally(() => { el.btnTest.disabled = false; });
+  } finally {
+    if (request === modelRequest) el.btnTest.disabled = false;
+  }
 }
 
 function onReset() {
@@ -332,9 +414,17 @@ function onVoiceTest() {
 /* ------------------------------------------------------------------ */
 
 function bind() {
-  el.formality.addEventListener('input', () => {
-    el.formalityOut.textContent = el.formality.value;
+  el.styleCard.addEventListener('input', renderStylePreview);
+  el.styleCard.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-rule]');
+    if (!btn) return;
+    const field = el.replyInstruction;
+    const lines = field.value.trimEnd().split('\n');
+    field.value = (btn.getAttribute('aria-pressed') === 'true'
+      ? lines.filter(line => line.trim() !== btn.dataset.rule) : [...lines, btn.dataset.rule]).join('\n').trim();
+    renderStylePreview();
   });
+  $('btn-save-style').addEventListener('click', () => saveStyleOnly().catch(() => toast('Не удалось сохранить стиль. Попробуйте ещё раз.', true)));
   el.voiceEnabled.addEventListener('change', renderVoiceAvailability);
   el.voiceLang.addEventListener('change', renderVoiceAvailability);
   el.toggleKey.addEventListener('click', () => {
@@ -343,7 +433,15 @@ function bind() {
     el.toggleKey.setAttribute('aria-label', show ? 'Скрыть ключ' : 'Показать ключ');
   });
   el.btnSave.addEventListener('click', onSave);
-  el.btnTest.addEventListener('click', onTest);
+  el.apiKey.addEventListener('input', () => resetModels(el.model.value));
+  el.model.addEventListener('change', () => {
+    const unavailable = el.model.querySelector('option:disabled');
+    if (unavailable && !el.model.selectedOptions[0]?.disabled) {
+      unavailable.remove();
+      renderTestResult('ok', 'Модель выбрана.', 'Нажмите «Сохранить настройки», чтобы применить выбор.');
+    }
+  });
+  el.btnTest.addEventListener('click', () => refreshModels());
   el.btnReset.addEventListener('click', onReset);
   el.btnClearStyle.addEventListener('click', onClearStyle);
   el.btnExport.addEventListener('click', onExport);
@@ -372,11 +470,11 @@ async function init() {
   const stored = await chrome.storage.local.get([STORAGE_KEYS.settings, STORAGE_KEYS.profile]);
   state.settings = normalizeSettings(stored[STORAGE_KEYS.settings]);
   state.profile = normalizeProfile(stored[STORAGE_KEYS.profile]);
-  // Миграция старых настроек (провайдер/модель) к фиксированному DeepSeek flash.
+  // Сохраняем безопасные настройки старых установок.
   const rawSettings = stored[STORAGE_KEYS.settings];
   if (
     !rawSettings || rawSettings.schema !== 3 || rawSettings.provider !== 'deepseek' ||
-    rawSettings.model !== 'deepseek-flash' || rawSettings.baseUrl !== state.settings.baseUrl ||
+    rawSettings.model !== state.settings.model || rawSettings.baseUrl !== state.settings.baseUrl ||
     rawSettings.apiKey !== state.settings.apiKey
   ) {
     await chrome.storage.local.set({ [STORAGE_KEYS.settings]: state.settings });
@@ -384,6 +482,7 @@ async function init() {
   applyTheme();
   applyForm(state.settings, state.profile);
   bind();
+  if (state.settings.apiKey) await refreshModels(true);
 }
 
 init().catch((error) => {

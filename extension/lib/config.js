@@ -12,7 +12,7 @@ export const STORAGE_KEYS = Object.freeze({
 });
 
 export const DEFAULT_SETTINGS = Object.freeze({
-  // Схема 3: провайдер/модель зафиксированы, контекст по умолчанию — выбранное сообщение.
+  // Схема 3: контекст по умолчанию — выбранное сообщение.
   schema: 3,
   provider: 'deepseek',
   baseUrl: 'https://api.deepseek.com',
@@ -37,10 +37,9 @@ export const PROVIDER_PRESETS = Object.freeze({
     label: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com',
     model: 'deepseek-flash',
-    models: ['deepseek-flash'],
+    models: ['deepseek-flash', 'deepseek-v4-pro'],
     needsKey: true,
     keyUrl: 'https://platform.deepseek.com/api_keys',
-    hint: 'Модель зафиксирована: deepseek-flash. Reasoning: high (thinking enabled). Base URL: https://api.deepseek.com.',
   },
   openai: {
     label: 'OpenAI-совместимый',
@@ -227,6 +226,10 @@ export function maskKey(key) {
   return `${value.slice(0, 4)}…${value.slice(-4)}`;
 }
 
+export function modelId(value) {
+  return typeof value === 'string' && value.trim() ? value : '';
+}
+
 export function normalizeSettings(raw) {
   const input = raw && typeof raw === 'object' ? raw : {};
   const voiceRaw = input.voice && typeof input.voice === 'object' ? input.voice : {};
@@ -235,12 +238,14 @@ export function normalizeSettings(raw) {
   // Схема 3: семантика контекста изменилась на «выбранное сообщение» — старые
   // профили (schema < 3) переводим на новый дефолт, явный выбор пользователя сохраняем.
   const legacyContext = input.schema !== 3;
-  // Миграция: старые настройки с openai/anthropic/ollama или другой моделью
-  // принудительно приводим к фиксированному профилю DeepSeek flash.
   let apiKey = '';
+  let model = DEFAULT_SETTINGS.model;
   try {
     // Ключ переносим только с подтверждённого HTTPS API DeepSeek.
-    if (new URL(input.baseUrl).origin === DEFAULT_SETTINGS.baseUrl) apiKey = String(input.apiKey || '').trim();
+    if (new URL(input.baseUrl).origin === DEFAULT_SETTINGS.baseUrl) {
+      apiKey = String(input.apiKey || '').trim();
+      model = modelId(input.model) || DEFAULT_SETTINGS.model;
+    }
   } catch {
     // Отсутствующий или некорректный адрес не подтверждает принадлежность ключа.
   }
@@ -248,14 +253,14 @@ export function normalizeSettings(raw) {
     schema: 3,
     provider: 'deepseek',
     baseUrl: 'https://api.deepseek.com',
-    model: 'deepseek-flash',
+    model,
     apiKey,
     temperature: clamp(input.temperature ?? DEFAULT_SETTINGS.temperature, 0, 1),
     maxTokens: Math.round(clamp(input.maxTokens ?? DEFAULT_SETTINGS.maxTokens, 128, 4000)),
     streaming: input.streaming !== false,
     theme: ['auto', 'light', 'dark'].includes(input.theme) ? input.theme : 'auto',
     replyContext: legacyContext || input.replyContext !== 'thread' ? 'last' : 'thread',
-    replyInstruction: String(input.replyInstruction || '').replace(/\s+/g, ' ').trim().slice(0, 500),
+    replyInstruction: String(input.replyInstruction || '').replace(/\r\n?/g, '\n').trim().slice(0, 500),
     voice: {
       enabled: voiceEnabled,
       lang: voiceLang,

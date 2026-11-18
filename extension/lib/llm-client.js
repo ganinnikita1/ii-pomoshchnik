@@ -13,7 +13,9 @@ import {
   LIMITS,
   normalizeSettings,
   chatEndpoint,
-  apiRoot,
+  DEFAULT_SETTINGS,
+  PROVIDER_PRESETS,
+  modelId,
   originPattern,
   isDemoMode,
 } from './config.js';
@@ -69,7 +71,7 @@ export function buildRequest(settings, task, { stream = true } = {}) {
   const s = normalizeSettings(settings);
   const endpoint = chatEndpoint(s);
   if (!endpoint) throw new LLMError('BAD_CONFIG', 'Некорректный base URL: проверьте настройки провайдера.');
-  const model = String(s.model || '').trim();
+  const model = s.model;
   if (!model) throw new LLMError('BAD_CONFIG', 'Не указана модель.');
   const messages = normalizeMessages(task);
   if (!messages.length) throw new LLMError('BAD_CONFIG', 'Пустой запрос: нет сообщений.');
@@ -113,12 +115,14 @@ export function buildRequest(settings, task, { stream = true } = {}) {
     };
   }
 
-  // DeepSeek: reasoning включён на высоком уровне (reasoning_effort high).
-  // Это даёт более качественные черновики; в thinking-режиме DeepSeek игнорирует temperature,
-  // но мы всё равно отправляем её — это допустимо. Параметр только для deepseek.
+  // Эти две модели поддерживают высокий уровень рассуждения. Для новых ID используем параметры сервера.
   if (s.provider === 'deepseek') {
-    body.thinking = { type: 'enabled' };
-    body.reasoning_effort = 'high';
+    if (PROVIDER_PRESETS.deepseek.models.includes(model)) {
+      body.thinking = { type: 'enabled' };
+      body.reasoning_effort = 'high';
+    } else {
+      delete body.temperature;
+    }
   }
 
   return { url: endpoint, headers, body, provider: s.provider };
@@ -209,7 +213,7 @@ function mapHttpError(status, bodyText) {
   if (status === 404) {
     return new LLMError('NOT_FOUND', 'Провайдер вернул 404: не найден endpoint или модель.', {
       status,
-      hint: 'Проверьте соединение в настройках расширения.',
+      hint: 'Обновите список моделей в настройках и выберите доступную.',
     });
   }
   if (status === 429) {
@@ -455,143 +459,33 @@ export async function* streamTask({ settings, task, signal }) {
 /* connection test                                                     */
 /* ------------------------------------------------------------------ */
 
-async function timedFetch(url, options, timeoutMs = 15000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal, redirect: 'error', credentials: 'omit', cache: 'no-store' });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/**
- * Проверка соединения без генерации контента (почти).
- * @returns {Promise<{ok:boolean, message:string, hint?:string, latencyMs:number, models?:string[], endpoint?:string, code?:string}>}
- */
+/** Загружает каталог ключа. Для проверки подключения генерация не требуется. */
 export async function testConnection({ settings }) {
   const s = normalizeSettings(settings);
-  const started = Date.now();
-  const latency = () => Date.now() - started;
-  const root = apiRoot(s);
-  if (!root) {
-    return { ok: false, message: 'Некорректный адрес API.', hint: 'Проверьте настройки расширения.', latencyMs: 0, code: 'BAD_CONFIG' };
-  }
-  if (isDemoMode(s)) {
-    return {
-      ok: false,
-      message: 'Ключ не задан — активен демо-режим.',
-      hint: 'Вставьте API-ключ DeepSeek в настройках расширения.',
-      latencyMs: 0,
-      code: 'NO_KEY',
-    };
-  }
+  if (!s.apiKey) return { ok: false, code: 'NO_KEY', message: 'Вставьте API-ключ DeepSeek.' };
 
-  if (s.provider === 'ollama') {
-    try {
-      const response = await timedFetch(`${root}/api/tags`, { method: 'GET' });
-      if (!response.ok) {
-        const mapped = mapHttpError(response.status, await response.text());
-        return { ok: false, message: mapped.message, hint: mapped.hint, latencyMs: latency(), endpoint: `${root}/api/tags`, code: mapped.code };
-      }
-      const data = await response.json();
-      const models = Array.isArray(data.models) ? data.models.map((m) => m && m.name).filter(Boolean) : [];
-      return {
-        ok: true,
-        message: 'Ollama отвечает.',
-        hint: models.includes(s.model) ? '' : `Модели «${s.model}» в списке нет — проверьте имя (ollama pull ${s.model}).`,
-        latencyMs: latency(),
-        endpoint: `${root}/api/tags`,
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        message: 'Ollama недоступна.',
-        hint: `Запустите «ollama serve» и разрешите расширению доступ к ${root}. Детали: ${error && error.message ? error.message : 'сеть'}`,
-        latencyMs: latency(),
-        code: 'NETWORK',
-      };
-    }
-  }
-
-  const headers = { 'Content-Type': 'application/json' };
-  if (s.provider === 'anthropic') {
-    headers['x-api-key'] = s.apiKey;
-    headers['anthropic-version'] = '2023-06-01';
-    headers['anthropic-dangerous-direct-browser-access'] = 'true';
-  } else {
-    headers.Authorization = `Bearer ${s.apiKey}`;
-  }
-
-  // 1) Пытаемся получить список моделей (дешёвый и информативный вызов).
   try {
-    const response = await timedFetch(`${root}/models`, { method: 'GET', headers });
-    if (response.ok) {
-      const data = await response.json().catch(() => ({}));
-      const raw = Array.isArray(data.data) ? data.data : Array.isArray(data.models) ? data.models : [];
-      const models = raw.map((m) => (m && (m.id || m.name)) || '').filter(Boolean);
-      const known = models.some((id) => id === s.model || id.endsWith(`/${s.model}`));
-      if (models.length && !known) {
-        // Не даём ложный зелёный статус: генерация с этой моделью не заработает.
-        return {
-          ok: false,
-          message: `Соединение есть, но модель «${s.model}» недоступна провайдеру.`,
-          hint: 'Проверьте модель/доступ ключа; иначе генерация будет падать.',
-          latencyMs: latency(),
-          endpoint: `${root}/models`,
-          code: 'MODEL_NOT_FOUND',
-        };
-      }
-      return {
-        ok: true,
-        message: 'Соединение работает.',
-        hint: known ? '' : 'Список моделей пуст — проверка только по соединению.',
-        latencyMs: latency(),
-        endpoint: `${root}/models`,
-      };
-    }
-    if (response.status === 401 || response.status === 403) {
-      const mapped = mapHttpError(response.status, await response.text());
-      return { ok: false, message: mapped.message, hint: mapped.hint, latencyMs: latency(), endpoint: `${root}/models`, code: mapped.code };
-    }
-    // /models может не поддерживаться (Ollama-совместимые, прокси) — пробуем минимальный запрос.
-  } catch (error) {
-    // Ничего: ниже попробуем chat-запрос, чтобы отличить DNS-ошибку от отсутствия /models.
-  }
-
-  // 2) Минимальный запрос генерации.
-  try {
-    const probeHeaders = { ...headers };
-    const body =
-      s.provider === 'anthropic'
-        ? { model: s.model, max_tokens: 1, messages: [{ role: 'user', content: 'ping' }] }
-        : { model: s.model, max_tokens: 1, messages: [{ role: 'user', content: 'ping' }], stream: false };
-    const response = await timedFetch(chatEndpoint(s), {
-      method: 'POST',
-      headers: probeHeaders,
-      body: JSON.stringify(body),
+    const response = await fetch(DEFAULT_SETTINGS.baseUrl + '/models', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer ' + s.apiKey },
+      signal: AbortSignal.timeout(15000),
+      redirect: 'error',
+      credentials: 'omit',
+      cache: 'no-store',
     });
     if (!response.ok) {
-      const mapped = mapHttpError(response.status, await response.text());
-      return { ok: false, message: mapped.message, hint: mapped.hint, latencyMs: latency(), endpoint: chatEndpoint(s), code: mapped.code };
+      const error = mapHttpError(response.status, '');
+      return { ok: false, code: error.code, message: error.message, hint: error.hint };
     }
-    return {
-      ok: true,
-      message: 'Соединение работает (проверено минимальным запросом).',
-      hint: '',
-      latencyMs: latency(),
-      endpoint: chatEndpoint(s),
-    };
-  } catch (error) {
-    const mapped = networkError(error);
-    return {
-      ok: false,
-      message: mapped.message,
-      hint: mapped.hint,
-      latencyMs: latency(),
-      endpoint: chatEndpoint(s),
-      code: mapped.code,
-    };
+    const payload = await response.json().catch(() => null);
+    if (!Array.isArray(payload?.data)) {
+      return { ok: false, code: 'BAD_RESPONSE', message: 'DeepSeek прислал некорректный список моделей.', hint: 'Попробуйте обновить список позже.' };
+    }
+    const models = [...new Set(payload.data.map((entry) => modelId(entry?.id)).filter(Boolean))];
+    if (!models.length) return { ok: false, code: 'NO_MODELS', models, message: 'Для этого ключа нет доступных моделей.' };
+    return { ok: true, models, message: 'Список моделей обновлён.' };
+  } catch {
+    return { ok: false, code: 'NETWORK', message: 'Не удалось загрузить модели DeepSeek.', hint: 'Проверьте подключение к интернету и повторите попытку.' };
   }
 }
 

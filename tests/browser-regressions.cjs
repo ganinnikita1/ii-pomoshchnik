@@ -21,6 +21,9 @@ const settings = {
   model: 'deepseek-flash', apiKey: 'fake-deepseek-browser-test-key', streaming: true, theme: 'dark',
 };
 const requests = [];
+const modelIds = ['deepseek-v4-flash', 'future-family-preview', 'Future-Family/Model.2'];
+const modelRequests = [];
+let catalogMode = 'ok';
 const errors = [];
 const results = {};
 let context, worker, base;
@@ -46,7 +49,18 @@ async function launch() {
   worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
   base = `chrome-extension://${worker.url().split('/')[2]}`;
   await context.route('https://api.deepseek.com/**', async (route) => {
-    requests.push({ body: route.request().postDataJSON(), headers: route.request().headers() });
+    const req = route.request();
+    if (new URL(req.url()).pathname === '/models' && req.method() === 'GET') {
+      modelRequests.push(req.headers().authorization);
+      if (catalogMode === 'offline') return route.abort('connectionfailed');
+      if (catalogMode === 'unauthorized') return route.fulfill({ status: 401, json: { error: { message: 'Invalid API key' } } });
+      return route.fulfill({ json: { object: 'list', data: modelIds.map(id => ({ id, object: 'model' })) } });
+    }
+    if (new URL(req.url()).pathname !== '/chat/completions' || req.method() !== 'POST') {
+      errors.push(`Unexpected API request: ${req.method()} ${req.url()}`);
+      return route.abort();
+    }
+    requests.push({ body: req.postDataJSON(), headers: req.headers() });
     const mode = responseMode;
     if (mode === 'hold') await new Promise((resolve) => { releaseResponse = resolve; });
     if (mode === 'error') {
@@ -94,10 +108,46 @@ async function reset(options) {
     assert.equal((await storage()).settings.baseUrl, settings.baseUrl);
     assert.equal(requests.length, 0);
     results.migration = 'PASS: settings page persists the cleared foreign key without a network request';
-    await worker.evaluate((settings) => chrome.storage.local.set({ settings }), settings);
+    const model = options.getByRole('combobox', { name: /модел/i });
+    const refresh = options.locator('#btn-test');
+    await refresh.click();
+    await options.locator('#test-result:visible').filter({ hasText: /ключ/i }).waitFor();
+    const demo = await panelInWindow();
+    await ask(demo, 'Что можно попробовать в демо?');
+    await idle(demo);
+    await demo.locator('.msg--assistant').first().waitFor();
+    await demo.close();
+    assert.deepEqual([modelRequests.length, requests.length], [0, 0], 'Demo must stay offline without a key');
+    await options.locator('#apiKey').fill(settings.apiKey);
+    await refresh.click();
+    await until(async () => {
+      const values = await model.locator('option').evaluateAll(items => items.filter(item => !item.disabled).map(item => item.value));
+      return modelIds.every(id => values.includes(id));
+    }, 'all API model IDs available');
+    assert.deepEqual(modelRequests, [`Bearer ${settings.apiKey}`]);
+    assert.equal(requests.length, 0, 'Listing models must not send a chat');
+    const selectedModel = modelIds[2];
+    await model.selectOption(selectedModel);
+    await options.locator('#btn-save').click();
+    await until(async () => (await storage()).settings.model === selectedModel, 'model saved');
     await options.reload();
     await until(async () => (await options.locator('#apiKey').inputValue()) === settings.apiKey, 'valid key preserved');
+    await until(async () => modelRequests.length === 2 && await model.inputValue() === selectedModel && await refresh.isEnabled(), 'saved account catalog reloaded');
+    for (const mode of ['unauthorized', 'offline']) {
+      catalogMode = mode;
+      const before = modelRequests.length;
+      await refresh.click();
+      await until(async () => modelRequests.length === before + 1 && await refresh.isEnabled() && await options.locator('#test-result.is-error').isVisible(), `catalog ${mode}`);
+      if (mode === 'unauthorized') assert.match(await options.locator('#test-result').innerText(), /ключ|401/i);
+      assert.equal(await model.inputValue(), selectedModel, 'Catalog failures must preserve the selected model');
+      assert.equal((await storage()).settings.model, selectedModel);
+    }
+    catalogMode = 'ok';
+    await refresh.click();
+    await options.locator('#test-result.is-ok').waitFor();
+    assert.equal(await model.inputValue(), selectedModel);
     const first = await panelInWindow();
+    assert.ok((await first.locator('#provider-state').innerText()).includes(selectedModel), 'Reopened panel shows saved model');
     await first.emulateMedia({ reducedMotion: 'no-preference' });
     await first.locator('#btn-history').press('Enter');
     await first.locator('#drawer:visible').waitFor();
@@ -114,6 +164,8 @@ async function reset(options) {
 
     await ask(first, 'Предложи два варианта ответа');
     await idle(first);
+    assert.equal(requests.at(-1).body.model, selectedModel, 'Chat request uses the exact selected model ID');
+    results.models = 'PASS: demo stays offline; full account list, stored choice, 401 and offline recovery, panel and chat request verified';
     const firstChat = await first.locator('#chat').innerText();
     assert.ok(firstChat.includes(answer.split('\n')[1]), JSON.stringify({ firstChat, requests }));
     await ask(first, 'сократи второй вариант');

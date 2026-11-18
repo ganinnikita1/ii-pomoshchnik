@@ -7,8 +7,9 @@ node tests/config-migration.mjs
 node tests/context-menu.mjs
 node tests/stream.mjs
 node tests/browser-regressions.cjs
+node tests/style-browser.cjs
 ```
 
-Для последней команды понадобятся Playwright и его Chromium (`npx playwright install chromium`). Если Playwright установлен отдельно, каталог с модулем можно указать через `NODE_PATH`, а каталог браузеров — через `PLAYWRIGHT_BROWSERS_PATH`.
+Для двух последних команд понадобятся Playwright и его Chromium (`npx playwright install chromium`). Если Playwright установлен отдельно, каталог с модулем можно указать через `NODE_PATH`, а каталог браузеров — через `PLAYWRIGHT_BROWSERS_PATH`.
 
 Проверки используют тестовый профиль, вымышленные письма и ответы API. Настоящие ключи, платные запросы и личный почтовый ящик не требуются. Браузерный тест проверяет сохранение настроек, очистку истории, повтор запросов, выделение между окнами, вставку в черновик, контраст и прокрутку. Переменная `TEST_OUTPUT_DIR` указывает, куда сохранить снимки экрана и JSON с результатами.

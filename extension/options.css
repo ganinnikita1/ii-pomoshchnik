@@ -303,6 +303,45 @@ output {
 
 /* learned rules */
 
+.style-choice {
+  min-inline-size: 0;
+  margin: 14px 0 0;
+  padding: 0;
+  border: 0;
+}
+.style-choice legend { margin-bottom: 6px; padding: 0; font-size: 13px; font-weight: 600; }
+.style-choice .segmented__item { min-width: 0; min-height: 34px; padding: 6px 4px; }
+.style-choice .segmented__item:has(:checked) {
+  color: var(--accent-2);
+  border-color: var(--accent);
+  background: var(--accent-softer);
+}
+.style-example {
+  margin: 18px 0 12px;
+  padding: 15px 17px 18px;
+  border-inline-start: 3px solid var(--accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--bg-inset);
+}
+.style-example h3 { margin: 0 0 9px; color: var(--text-muted); font-size: 12px; font-weight: 600; }
+.style-example p { margin: 0; font: 18px/1.5 Georgia, serif; color: var(--text); white-space: pre-line; overflow-wrap: anywhere; }
+.style-details { border-bottom: 1px solid var(--border-hairline); }
+.style-details summary { padding: 12px 2px; color: var(--text); cursor: pointer; font-weight: 600; font-size: 13px; }
+.style-details summary::marker { color: var(--accent); }
+.style-details summary:focus-visible, .style-tags button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.style-details__body { display: grid; gap: 14px; padding: 1px 2px 14px; }
+.style-details__body .style-choice, .style-details__body .card__actions, .style-details__body .learned__list { margin: 0; }
+.style-tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 2px 0 4px; }
+.style-tags button {
+  border: 1px solid var(--border); border-radius: 16px; padding: 5px 10px; min-height: 30px;
+  background: var(--bg-elev); color: var(--text-muted); font: inherit; font-size: 12px; cursor: pointer;
+}
+.style-tags button::before { content: '+'; margin-inline-end: 5px; }
+.style-tags button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent-2); background: var(--accent-softer); }
+.style-tags button[aria-pressed="true"]::before { content: '✓'; }
+.style-tags button:disabled { opacity: .6; cursor: default; }
+.style-card .learned__empty { color: var(--text-muted); font-size: 12px; }
+
 .learned {
   margin-top: 14px;
   padding: 10px;
