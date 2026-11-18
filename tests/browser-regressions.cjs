@@ -64,7 +64,7 @@ async function panelInWindow() {
   await worker.evaluate((url) => chrome.windows.create({ url, type: 'popup', width: 400, height: 900 }), url);
   await until(() => context.pages().some((page) => page.url() === url), 'panel page');
   const page = context.pages().find((page) => page.url() === url);
-  await page.locator('#provider-state').filter({ hasText: /DeepSeek|Демо/ }).waitFor();
+  await page.locator('#provider-state:visible, #mode-banner-text:visible').filter({ hasText: /DeepSeek|Демо/ }).waitFor();
   return page;
 }
 async function ask(page, question) {
@@ -98,6 +98,16 @@ async function reset(options) {
     await options.reload();
     await until(async () => (await options.locator('#apiKey').inputValue()) === settings.apiKey, 'valid key preserved');
     const first = await panelInWindow();
+    await first.emulateMedia({ reducedMotion: 'no-preference' });
+    await first.locator('#btn-history').press('Enter');
+    await first.locator('#drawer:visible').waitFor();
+    assert.equal(await first.locator('.click-sparks').evaluate(el => getComputedStyle(el).pointerEvents), 'none');
+    await first.locator('.click-sparks').waitFor({ state: 'detached' });
+    await first.emulateMedia({ reducedMotion: 'reduce' });
+    await first.locator('#btn-drawer-close').click();
+    await first.locator('#drawer').waitFor({ state: 'hidden' });
+    assert.equal(await first.locator('.click-sparks').count(), 0);
+    results.motion = 'PASS: keyboard activation and reduced-motion click both work; particles do not intercept input';
     const second = await panelInWindow();
     const ids = await Promise.all([first, second].map((page) => page.evaluate(async () => (await chrome.windows.getCurrent()).id)));
     assert.notEqual(ids[0], ids[1], 'Panels must belong to separate browser windows');
@@ -267,7 +277,7 @@ async function reset(options) {
     await until(async () => (await fallbackPanel.locator('#manual-text').inputValue()) === fallbackSelection.text, 'selection loaded in fallback window');
     await control.close();
     await fallbackPanel.reload();
-    await fallbackPanel.locator('#provider-state').filter({ hasText: /DeepSeek|Демо/ }).waitFor();
+    await fallbackPanel.locator('#provider-state:visible, #mode-banner-text:visible').filter({ hasText: /DeepSeek|Демо/ }).waitFor();
     assert.equal(requests.length, beforeSelection, 'Selecting text must not send an API request');
     await coldPanel.close();
     await fallbackPanel.close();

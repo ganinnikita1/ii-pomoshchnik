@@ -84,7 +84,7 @@
         </button>
         <button class="chip" id="btn-brief" type="button" title="Кратко пересказать вставленный текст">
           <svg class="icon" aria-hidden="true"><use href="#i-brief"></use></svg>
-          <span class="chip__label">Суть</span>
+          <span class="chip__label">Кратко</span>
         </button>
         <button class="chip" id="btn-summary" type="button" title="Разобрать вставленный текст по пунктам">
           <svg class="icon" aria-hidden="true"><use href="#i-page"></use></svg>
@@ -102,6 +102,7 @@
             class="composer__input"
             rows="1"
             placeholder="Уточните, каким должен быть ответ…"
+            title="Enter — спросить, Shift + Enter — новая строка"
             aria-describedby="voice-status composer-note"
           ></textarea>
         </div>
@@ -119,7 +120,7 @@
             Спросить
           </button>
         </div>
-        <p class="composer__note" id="composer-note">
+        <p class="sr-only" id="composer-note">
           <span>Enter — спросить · Shift + Enter — новая строка</span>
         </p>
       </form>

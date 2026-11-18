@@ -272,11 +272,12 @@ async function refreshProviderState() {
   const settings = state.settings;
   state.demo = isDemoMode(settings);
   el.providerState.classList.remove('is-demo', 'is-live');
+  el.providerState.hidden = state.demo;
   if (state.demo) {
     el.providerState.textContent = 'Демонстрационный режим';
     el.providerState.classList.add('is-demo');
     el.banner.hidden = false;
-    el.bannerText.textContent = 'Ответы — примеры. Для своих черновиков подключите DeepSeek.';
+    el.bannerText.textContent = 'Деморежим: примеры без API-ключа.';
     el.bannerAction.textContent = 'Подключить';
     el.bannerAction.dataset.action = 'settings';
     return;
@@ -418,6 +419,7 @@ function updateManualUi() {
   const length = raw.length;
   el.manualCounter.textContent = `${length.toLocaleString('ru-RU')} / ${MANUAL_LIMIT.toLocaleString('ru-RU')} знаков`;
   el.manualCounter.classList.toggle('is-over', length >= MANUAL_LIMIT);
+  el.manualCounter.hidden = length === 0;
   el.manualClear.disabled = length === 0;
   if (el.manualText.value !== raw) el.manualText.value = raw;
 }
@@ -530,7 +532,7 @@ function renderEmptyState() {
   const text = document.createElement('p');
   text.className = 'empty__text';
   text.textContent =
-    'Вставьте письмо и нажмите «Ответить». Готовый вариант можно отредактировать в почте перед отправкой.';
+    'Нажмите «Ответить», чтобы выбрать черновик для письма.';
   wrap.appendChild(text);
 
 
@@ -720,7 +722,8 @@ class MessageView {
     if (message.role === 'assistant' && message.meta && message.meta.demo) {
       const badge = document.createElement('span');
       badge.className = 'badge badge--warning';
-      badge.textContent = 'демо';
+      badge.textContent = 'Демо';
+      badge.title = 'Локальный пример без запроса к DeepSeek';
       head.appendChild(badge);
     }
     this.root.appendChild(head);
@@ -758,16 +761,6 @@ class MessageView {
       renderRichText(this.body, this.message.content || '');
     }
     this.renderActions();
-    this.showDemoNotice();
-  }
-
-  showDemoNotice() {
-    const text = this.message.meta && this.message.meta.demoNotice;
-    if (!text || this.root.querySelector('.notice--demo')) return;
-    const notice = document.createElement('p');
-    notice.className = 'notice notice--demo';
-    notice.textContent = text;
-    this.root.appendChild(notice);
   }
 
   renderActions() {
@@ -1255,10 +1248,6 @@ async function executeTask(task, options = {}) {
       delete message.meta.streaming;
       state.controller = null;
       view.finishStreaming(message);
-      if (state.demo && !message.meta.error) {
-        message.meta.demoNotice = 'Демо-ответ без обращения к модели. Ключ настраивается в разделе «Настройки».';
-        view.showDemoNotice();
-      }
       setBusy(false);
       scheduleSave();
       scrollToBottom();
@@ -1357,7 +1346,7 @@ async function generateSummary(brief = false) {
   const userMessage = {
     id: uid('msg'),
     role: 'user',
-    content: briefMode ? 'Краткая сводка вставленного текста' : 'Разбери вставленный текст',
+    content: briefMode ? 'Кратко перескажи письмо' : 'Разбери вставленный текст',
     ts: Date.now(),
     meta: {},
   };
@@ -1694,7 +1683,29 @@ async function onSubmit(event) {
 /* events / init                                                       */
 /* ------------------------------------------------------------------ */
 
+function showClickSparks(event) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const button = event.target.closest('button:not(:disabled)');
+  if (!button) return;
+  const bounds = button.getBoundingClientRect();
+  const group = document.createElement('span');
+  group.className = 'click-sparks';
+  group.classList.toggle('click-sparks--on-accent', button.matches('#btn-reply, .primary-btn'));
+  group.setAttribute('aria-hidden', 'true');
+  group.style.left = `${event.detail ? event.clientX : bounds.left + bounds.width / 2}px`;
+  group.style.top = `${event.detail ? event.clientY : bounds.top + bounds.height / 2}px`;
+  for (let index = 0; index < 5; index += 1) {
+    const spark = document.createElement('i');
+    spark.className = 'click-spark';
+    group.appendChild(spark);
+  }
+  document.querySelector('.click-sparks')?.remove();
+  document.body.appendChild(group);
+  setTimeout(() => group.remove(), 450);
+}
+
 function bindEvents() {
+  document.addEventListener('click', showClickSparks, true);
   el.form.addEventListener('submit', onSubmit);
   el.input.addEventListener('input', () => {
     resizeInput();
